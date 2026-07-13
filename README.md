@@ -1,3 +1,3 @@
-# Personal Ledger
+# Weekly Ledger
 
-A small bookkeeping website I built as a hobby for my own everyday use.
+Vibe coding product. Bookkeeping website for personal use.
