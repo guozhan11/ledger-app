@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="./support.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 <x-dc>
@@ -160,6 +161,10 @@
         <div style="font-weight:600;font-size:14px;">Periods</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button onClick="{{ addAccount }}" style="border:1px solid var(--line);background:var(--surface);color:var(--ink);font-family:inherit;font-size:12.5px;font-weight:500;padding:7px 12px;border-radius:9px;cursor:pointer;" style-hover="border-color:var(--accent);color:var(--accent)">+ Account</button>
+          <label style="position:relative;overflow:hidden;display:inline-flex;align-items:center;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-family:inherit;font-size:12.5px;font-weight:500;padding:7px 12px;border-radius:9px;cursor:pointer;">
+            Import CSV / Excel
+            <input type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange="{{ onImport }}" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;">
+          </label>
           <button onClick="{{ onExport }}" style="border:1px solid var(--line);background:var(--surface);color:var(--ink);font-family:inherit;font-size:12.5px;font-weight:500;padding:7px 12px;border-radius:9px;cursor:pointer;" style-hover="border-color:var(--accent);color:var(--accent)">Export CSV</button>
           <button onClick="{{ onReset }}" style="border:1px solid var(--line);background:var(--surface);color:var(--muted);font-family:inherit;font-size:12.5px;font-weight:500;padding:7px 12px;border-radius:9px;cursor:pointer;" style-hover="border-color:var(--neg);color:var(--neg)">Reset</button>
           <button onClick="{{ addPeriod }}" style="border:none;background:var(--accent);color:#fff;font-family:inherit;font-size:12.5px;font-weight:600;padding:7px 14px;border-radius:9px;cursor:pointer;" style-hover="filter:brightness(1.06)">+ Add period</button>
@@ -285,7 +290,7 @@ class Component extends DCLogic {
   }
   setGoal(ev){ const v=this.evalExpr(ev.target.value); if(v==null) return; this.setState({goal:v}, ()=>this.persist()); }
   setHorizon(ev){ let v=this.evalExpr(ev.target.value); if(v==null) return; v=Math.max(1, Math.round(v)); this.setState({horizon:v}, ()=>this.persist()); }
-  onReset(){ if(window.confirm('Reset to sample data? This clears your saved entries.')){ this.setState(this.seed(), ()=>this.persist()); } }
+  onReset(){ if(window.confirm('Reset all local data? This clears your saved accounts and entries.')){ this.setState(this.seed(), ()=>this.persist()); } }
   onExport(){
     const A=this.state.accounts;
     const es=[...this.state.entries].sort((a,b)=> a.date<b.date?-1:1);
@@ -300,6 +305,103 @@ class Component extends DCLogic {
     const blob=new Blob([lines.join('\n')],{type:'text/csv'});
     const url=URL.createObjectURL(blob); const a=document.createElement('a');
     a.href=url; a.download='spending.csv'; a.click(); URL.revokeObjectURL(url);
+  }
+
+  headerKey(value){ return String(value==null?'':value).trim().toLowerCase(); }
+
+  importNumber(value){
+    if(value==null || value==='') return null;
+    if(typeof value==='number') return isFinite(value) ? value : undefined;
+    let s=String(value).trim();
+    if(!s) return null;
+    const negative=/^\(.*\)$/.test(s);
+    s=s.replace(/[,$£€¥\s]/g,'').replace(/^\((.*)\)$/,'$1');
+    const v=Number(s);
+    return isFinite(v) ? (negative?-v:v) : undefined;
+  }
+
+  importDate(value){
+    if(value instanceof Date && !isNaN(value)) return this.iso(value);
+    if(typeof value==='number' && window.XLSX && XLSX.SSF){
+      const p=XLSX.SSF.parse_date_code(value);
+      if(p) return String(p.y).padStart(4,'0')+'-'+String(p.m).padStart(2,'0')+'-'+String(p.d).padStart(2,'0');
+    }
+    const s=String(value==null?'':value).trim();
+    let m=s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+    if(m) return m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0');
+    m=s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2}|\d{4})$/);
+    if(m){ const y=m[3].length===2 ? (Number(m[3])>=70?'19':'20')+m[3] : m[3]; return y+'-'+m[1].padStart(2,'0')+'-'+m[2].padStart(2,'0'); }
+    return null;
+  }
+
+  async onImport(ev){
+    const input=ev.target;
+    const file=input.files && input.files[0];
+    if(!file) return;
+    try{
+      if(!window.XLSX) throw new Error('The Excel reader could not load. Check your internet connection and try again.');
+      const workbook=XLSX.read(await file.arrayBuffer(), {cellDates:true});
+      const sheet=workbook.Sheets[workbook.SheetNames[0]];
+      if(!sheet) throw new Error('The workbook has no worksheets.');
+      const grid=XLSX.utils.sheet_to_json(sheet, {header:1,raw:true,defval:null,blankrows:false});
+      const dateNames=['date','日期','period'];
+      let headerIndex=grid.findIndex(row=>row.some(cell=>dateNames.includes(this.headerKey(cell))));
+      let implicitDateCol=-1;
+      if(headerIndex<0){
+        headerIndex=grid.findIndex((row,i)=>i+1<grid.length && !this.headerKey(row[0]) && row.slice(1).some(cell=>this.headerKey(cell)) && !!this.importDate(grid[i+1][0]));
+        if(headerIndex>=0) implicitDateCol=0;
+      }
+      if(headerIndex<0) throw new Error('No date column was found. Label it Date, or leave the first header blank with dates in the first column.');
+      const headers=grid[headerIndex].map(v=>String(v==null?'':v).trim());
+      const keys=headers.map(v=>this.headerKey(v));
+      const dateCol=implicitDateCol>=0 ? implicitDateCol : keys.findIndex(k=>dateNames.includes(k));
+      const noteCol=keys.findIndex(k=>['note','notes','备注'].includes(k));
+      const ignored=['','total','sum','change','net worth','networth','spending'];
+      const accountCols=headers.map((name,i)=>({name,i,key:keys[i]})).filter(c=>c.i!==dateCol && c.i!==noteCol && !ignored.includes(c.key));
+      if(!accountCols.length) throw new Error('No account columns were found. Put each account in its own column after Date.');
+
+      const parsed=[];
+      for(let r=headerIndex+1;r<grid.length;r++){
+        const row=grid[r];
+        if(!row || row.every(v=>v==null || String(v).trim()==='')) continue;
+        const date=this.importDate(row[dateCol]);
+        if(!date) throw new Error('Row '+(r+1)+' has an invalid date. Use YYYY-MM-DD or MM/DD/YYYY.');
+        const values={};
+        for(const col of accountCols){
+          const value=this.importNumber(row[col.i]);
+          if(value===undefined) throw new Error('Row '+(r+1)+', '+col.name+' is not a valid number.');
+          if(value!=null) values[col.key]=value;
+        }
+        const note=noteCol>=0?String(row[noteCol]||'').trim():'';
+        if(Object.keys(values).length || note) parsed.push({date,note,values});
+      }
+      if(!parsed.length) throw new Error('No rows with account balances were found.');
+      if(!window.confirm('Import '+parsed.length+' row'+(parsed.length===1?'':'s')+' from '+file.name+'? Entries with the same date will be updated.')) return;
+
+      this.setState(s=>{
+        const accounts=s.accounts.map(a=>({...a}));
+        const byName=new Map(accounts.map(a=>[this.headerKey(a.name),a]));
+        const importedAccounts=new Map();
+        accountCols.forEach(col=>{
+          let account=byName.get(col.key);
+          if(!account){ account={id:this.uid(),name:col.name}; accounts.push(account); byName.set(col.key,account); }
+          importedAccounts.set(col.key,account);
+        });
+        const entries=s.entries.map(e=>({...e,balances:{...e.balances}}));
+        const byDate=new Map(entries.map(e=>[e.date,e]));
+        parsed.forEach(row=>{
+          let entry=byDate.get(row.date);
+          if(!entry){ entry={id:this.uid(),date:row.date,note:'',balances:{}}; entries.push(entry); byDate.set(row.date,entry); }
+          importedAccounts.forEach((account,key)=>{ if(row.values[key]!=null) entry.balances[account.id]=row.values[key]; });
+          if(row.note) entry.note=row.note;
+        });
+        return {accounts,entries};
+      },()=>{ this.persist(); window.alert('Imported '+parsed.length+' row'+(parsed.length===1?'':'s')+' successfully.'); });
+    }catch(error){
+      window.alert('Import failed: '+(error && error.message ? error.message : error));
+    }finally{
+      input.value='';
+    }
   }
 
   iso(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
@@ -450,7 +552,7 @@ class Component extends DCLogic {
       nwLine, nwArea, nwDots, nwMaxLabel:fmt(dmax,false), nwMinLabel:fmt(dmin,false),
       bars, zeroLineY,
       accCols, rows,
-      addAccount:()=>this.addAccount(), addPeriod:()=>this.addPeriod(), onExport:()=>this.onExport(), onReset:()=>this.onReset(),
+      addAccount:()=>this.addAccount(), addPeriod:()=>this.addPeriod(), onImport:(ev)=>this.onImport(ev), onExport:()=>this.onExport(), onReset:()=>this.onReset(),
       periodCountStr: n+' period'+(n===1?'':'s')+' · '+accounts.length+' account'+(accounts.length===1?'':'s')
     };
   }
