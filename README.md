@@ -1,3 +1,5 @@
 # Weekly Ledger
 
-Vibe coding product. Bookkeeping website for personal use.
+Vibe coding product.
+
+Bookkeeping website for personal use.
