@@ -58,6 +58,23 @@
       </div>
     </div>
 
+    <sc-if value="{{ noEntries }}" hint-placeholder-val="{{ false }}">
+      <div style="background:linear-gradient(135deg,var(--surface),var(--accent-soft));border:1px solid var(--line);border-radius:16px;padding:20px;margin-bottom:14px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px;">
+        <div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:18px;font-weight:600;">See Ledger in action</div>
+          <div style="font-size:12.5px;color:var(--muted);margin-top:5px;line-height:1.5;">Explore a fictional portfolio. Demo data stays in this browser and can be cleared anytime.</div>
+        </div>
+        <button onClick="{{ loadDemo }}" style="border:none;background:var(--accent);color:#fff;font-family:inherit;font-size:12.5px;font-weight:600;padding:9px 15px;border-radius:10px;cursor:pointer;" style-hover="filter:brightness(1.06)">Load demo data</button>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ demoMode }}" hint-placeholder-val="{{ false }}">
+      <div style="background:var(--accent-soft);border:1px solid var(--line);border-radius:12px;padding:10px 13px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:12.5px;">
+        <div><span style="font-weight:600;color:var(--accent);">Demo mode</span><span style="color:var(--muted);"> · All balances below are fictional.</span></div>
+        <button onClick="{{ clearDemo }}" style="border:none;background:transparent;color:var(--muted);font-family:inherit;font-size:12px;font-weight:500;cursor:pointer;padding:2px 0;" style-hover="color:var(--neg)">Clear demo</button>
+      </div>
+    </sc-if>
+
     <!-- KPI strip -->
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:14px;">
       <div style="background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px 18px;">
@@ -84,13 +101,32 @@
       <div style="background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 18px 12px;">
         <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
           <div style="font-weight:600;font-size:14px;">Net worth over time</div>
-          <div style="font-size:12px;color:var(--muted);">{{ netWorthStr }}</div>
+          <div style="font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;">{{ chartHoverLabel }}</div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:8px 0 2px;">
+          <span style="font-size:10.5px;color:var(--muted);margin-right:2px;">Compare</span>
+          <sc-for list="{{ accountLines }}" as="series" hint-placeholder-count="4">
+            <button key="{{ series.key }}" onClick="{{ series.onToggle }}" style="{{ series.buttonStyle }}">
+              <span style="{{ series.dotStyle }}"></span>{{ series.name }}
+            </button>
+          </sc-for>
         </div>
         <svg viewBox="0 0 720 240" width="100%" style="height:auto;display:block;overflow:visible;">
           <path d="{{ nwArea }}" fill="var(--accent-soft)" stroke="none"></path>
+          <sc-if value="{{ hoverGuide.show }}" hint-placeholder-val="{{ false }}">
+            <line x1="{{ hoverGuide.x }}" x2="{{ hoverGuide.x }}" y1="18" y2="214" stroke="var(--line)" stroke-width="1" stroke-dasharray="4 4"></line>
+          </sc-if>
+          <sc-for list="{{ accountLines }}" as="series" hint-placeholder-count="4">
+            <sc-if value="{{ series.active }}" hint-placeholder-val="{{ false }}">
+              <path d="{{ series.path }}" fill="none" stroke="{{ series.color }}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" opacity=".9" vector-effect="non-scaling-stroke"></path>
+            </sc-if>
+          </sc-for>
           <path d="{{ nwLine }}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></path>
           <sc-for list="{{ nwDots }}" as="d" hint-placeholder-count="2">
-            <circle cx="{{ d.cx }}" cy="{{ d.cy }}" r="{{ d.r }}" fill="var(--surface)" stroke="var(--accent)" stroke-width="2.5"></circle>
+            <g onMouseEnter="{{ d.onEnter }}" onMouseLeave="{{ d.onLeave }}">
+              <circle cx="{{ d.cx }}" cy="{{ d.cy }}" r="14" fill="transparent" style="cursor:crosshair;"></circle>
+              <circle cx="{{ d.cx }}" cy="{{ d.cy }}" r="{{ d.r }}" fill="var(--surface)" stroke="var(--accent)" stroke-width="2.5" style="pointer-events:none;"></circle>
+            </g>
           </sc-for>
           <text x="666" y="26" font-size="11" fill="var(--muted)" font-family="Space Grotesk">{{ nwMaxLabel }}</text>
           <text x="666" y="214" font-size="11" fill="var(--muted)" font-family="Space Grotesk">{{ nwMinLabel }}</text>
@@ -238,17 +274,53 @@ class Component extends DCLogic {
   load(){
     try{
       const raw = localStorage.getItem('spendtrack.v1');
-      if(raw){ const d = JSON.parse(raw); if(d && d.accounts && d.entries) return {accounts:d.accounts, entries:d.entries, goal: (d.goal!=null? d.goal : 100000), horizon: (d.horizon!=null? d.horizon : 12)}; }
+      if(raw){ const d = JSON.parse(raw); if(d && d.accounts && d.entries) return {accounts:d.accounts, entries:d.entries, goal:(d.goal!=null?d.goal:100000), horizon:(d.horizon!=null?d.horizon:12), isDemo:!!d.isDemo, visibleAccounts:{}, hoveredPoint:null}; }
     }catch(e){}
     return this.seed();
   }
 
   seed(){
-    return {accounts:[], entries:[], goal:100000, horizon:12};
+    return {accounts:[], entries:[], goal:100000, horizon:12, isDemo:false, visibleAccounts:{}, hoveredPoint:null};
+  }
+
+  demoState(){
+    const checking={id:this.uid(),name:'Checking'};
+    const savings={id:this.uid(),name:'Savings'};
+    const investments={id:this.uid(),name:'Investments'};
+    const card={id:this.uid(),name:'Credit Card'};
+    const row=(date,a,b,c,d,note)=>({id:this.uid(),date,note:note||'',balances:{[checking.id]:a,[savings.id]:b,[investments.id]:c,[card.id]:d}});
+    return {
+      accounts:[checking,savings,investments,card],
+      entries:[
+        row('2026-03-01',4600,18500,24100,-860,''),
+        row('2026-03-15',4200,19200,24900,-540,''),
+        row('2026-04-05',5100,19800,25450,-1200,''),
+        row('2026-04-19',4700,20500,26300,-720,''),
+        row('2026-05-03',5300,21200,27100,-960,''),
+        row('2026-05-17',4900,22000,28050,-610,'Savings milestone'),
+        row('2026-06-07',5800,22700,28900,-1380,''),
+        row('2026-06-21',5400,23500,29800,-740,''),
+        row('2026-07-05',6200,24300,30750,-1050,'Demo portfolio')
+      ],
+      goal:75000,
+      horizon:12,
+      isDemo:true,
+      visibleAccounts:{},
+      hoveredPoint:null
+    };
+  }
+
+  loadDemo(){
+    if(this.state.entries.length && !window.confirm('Replace the current local data with fictional demo data?')) return;
+    this.setState(this.demoState(),()=>this.persist());
+  }
+
+  clearDemo(){
+    if(window.confirm('Clear the fictional demo data and return to a blank ledger?')) this.setState(this.seed(),()=>this.persist());
   }
 
   persist(){
-    try{ localStorage.setItem('spendtrack.v1', JSON.stringify({accounts:this.state.accounts, entries:this.state.entries, goal:this.state.goal, horizon:this.state.horizon})); }catch(e){}
+    try{ localStorage.setItem('spendtrack.v1', JSON.stringify({accounts:this.state.accounts, entries:this.state.entries, goal:this.state.goal, horizon:this.state.horizon, isDemo:!!this.state.isDemo})); }catch(e){}
   }
 
   evalExpr(str){
@@ -290,6 +362,9 @@ class Component extends DCLogic {
   }
   setGoal(ev){ const v=this.evalExpr(ev.target.value); if(v==null) return; this.setState({goal:v}, ()=>this.persist()); }
   setHorizon(ev){ let v=this.evalExpr(ev.target.value); if(v==null) return; v=Math.max(1, Math.round(v)); this.setState({horizon:v}, ()=>this.persist()); }
+  toggleAccount(id){ this.setState(s=>({visibleAccounts:{...(s.visibleAccounts||{}),[id]:!((s.visibleAccounts||{})[id])}})); }
+  hoverPoint(index){ this.setState({hoveredPoint:index}); }
+  clearHover(){ this.setState({hoveredPoint:null}); }
   onReset(){ if(window.confirm('Reset all local data? This clears your saved accounts and entries.')){ this.setState(this.seed(), ()=>this.persist()); } }
   onExport(){
     const A=this.state.accounts;
@@ -379,7 +454,7 @@ class Component extends DCLogic {
       if(!window.confirm('Import '+parsed.length+' row'+(parsed.length===1?'':'s')+' from '+file.name+'? Entries with the same date will be updated.')) return;
 
       this.setState(s=>{
-        const accounts=s.accounts.map(a=>({...a}));
+        const accounts=(s.isDemo?[]:s.accounts).map(a=>({...a}));
         const byName=new Map(accounts.map(a=>[this.headerKey(a.name),a]));
         const importedAccounts=new Map();
         accountCols.forEach(col=>{
@@ -387,7 +462,7 @@ class Component extends DCLogic {
           if(!account){ account={id:this.uid(),name:col.name}; accounts.push(account); byName.set(col.key,account); }
           importedAccounts.set(col.key,account);
         });
-        const entries=s.entries.map(e=>({...e,balances:{...e.balances}}));
+        const entries=(s.isDemo?[]:s.entries).map(e=>({...e,balances:{...e.balances}}));
         const byDate=new Map(entries.map(e=>[e.date,e]));
         parsed.forEach(row=>{
           let entry=byDate.get(row.date);
@@ -395,7 +470,7 @@ class Component extends DCLogic {
           importedAccounts.forEach((account,key)=>{ if(row.values[key]!=null) entry.balances[account.id]=row.values[key]; });
           if(row.note) entry.note=row.note;
         });
-        return {accounts,entries};
+        return {accounts,entries,isDemo:false,visibleAccounts:{},hoveredPoint:null};
       },()=>{ this.persist(); window.alert('Imported '+parsed.length+' row'+(parsed.length===1?'':'s')+' successfully.'); });
     }catch(error){
       window.alert('Import failed: '+(error && error.message ? error.message : error));
@@ -488,18 +563,56 @@ class Component extends DCLogic {
     // ---- charts ----
     const W=720,H=240,PADL=12,PADR=58,PADT=18,PADB=26;
     const totals=wt.map(e=>e.total);
-    let minV=totals.length?Math.min(...totals):0, maxV=totals.length?Math.max(...totals):1;
+    const palette=['#b5714a','#6f8f72','#7669a8','#b55b75','#4c8d9b','#98703f'];
+    const visibleAccounts=this.state.visibleAccounts||{};
+    const rawAccountSeries=accounts.map((account,i)=>({
+      account,
+      color:palette[i%palette.length],
+      active:!!visibleAccounts[account.id],
+      values:wt.map(e=>{ const v=e.balances[account.id]; return typeof v==='number'&&isFinite(v)?v:null; })
+    }));
+    const axisValues=[...totals];
+    rawAccountSeries.forEach(s=>{ if(s.active) s.values.forEach(v=>{ if(v!=null) axisValues.push(v); }); });
+    let minV=axisValues.length?Math.min(...axisValues):0, maxV=axisValues.length?Math.max(...axisValues):1;
     if(!isFinite(minV)){minV=0;maxV=1;}
     if(minV===maxV){ const b=Math.abs(minV)*0.05+1; minV-=b; maxV+=b; }
     const pad=(maxV-minV)*0.12; const dmin=minV-pad, dmax=maxV+pad;
     const xAt=(i)=> n<=1 ? (PADL+(W-PADL-PADR)/2) : PADL + i/(n-1)*(W-PADL-PADR);
     const yAt=(v)=> H-PADB - (v-dmin)/(dmax-dmin)*(H-PADT-PADB);
-    const nwDots=wt.map((e,i)=>({cx:+xAt(i).toFixed(1), cy:+yAt(e.total).toFixed(1), r:i===n-1?4.5:3}));
+    const hoveredPoint=Number.isInteger(this.state.hoveredPoint)&&this.state.hoveredPoint>=0&&this.state.hoveredPoint<n ? this.state.hoveredPoint : null;
+    const nwDots=wt.map((e,i)=>({
+      cx:+xAt(i).toFixed(1),
+      cy:+yAt(e.total).toFixed(1),
+      r:hoveredPoint===i?6:(i===n-1?4.5:3),
+      onEnter:()=>this.hoverPoint(i),
+      onLeave:()=>this.clearHover()
+    }));
     let nwLine='', nwArea='';
     if(n>=1){
       nwLine = nwDots.map((d,i)=>(i?'L':'M')+d.cx+' '+d.cy).join(' ');
       if(n>=2) nwArea = nwLine+' L'+nwDots[n-1].cx+' '+(H-PADB)+' L'+nwDots[0].cx+' '+(H-PADB)+' Z';
     }
+    const accountLines=rawAccountSeries.map(series=>{
+      let penUp=true;
+      const path=series.values.map((v,i)=>{
+        if(v==null){ penUp=true; return ''; }
+        const command=penUp?'M':'L'; penUp=false;
+        return command+xAt(i).toFixed(1)+' '+yAt(v).toFixed(1);
+      }).filter(Boolean).join(' ');
+      return {
+        key:series.account.id,
+        name:series.account.name,
+        color:series.color,
+        path,
+        active:series.active,
+        onToggle:()=>this.toggleAccount(series.account.id),
+        buttonStyle:{display:'inline-flex',alignItems:'center',gap:'5px',border:'1px solid '+(series.active?series.color:'var(--line)'),background:series.active?'var(--accent-soft)':'transparent',color:series.active?'var(--ink)':'var(--muted)',fontFamily:'inherit',fontSize:'10.5px',fontWeight:500,padding:'4px 7px',borderRadius:'999px',cursor:'pointer',opacity:series.active?1:.72},
+        dotStyle:{display:'inline-block',width:'6px',height:'6px',borderRadius:'50%',background:series.color}
+      };
+    });
+    const hoverEntry=hoveredPoint!=null?wt[hoveredPoint]:(n?wt[n-1]:null);
+    const chartHoverLabel=hoverEntry?short(hoverEntry.date)+' · '+fmt(hoverEntry.total,false):'—';
+    const hoverGuide={show:hoveredPoint!=null,x:hoveredPoint!=null?+xAt(hoveredPoint).toFixed(1):0};
 
     const changes=wt.slice(1).map(e=>({val:e.change, date:short(e.date)}));
     const m=changes.length;
@@ -548,11 +661,11 @@ class Component extends DCLogic {
       goalDefault:''+goal, goalKey:'goal'+goal, onGoal:(ev)=>this.setGoal(ev),
       horizonDefault:''+horizon, horizonKey:'hz'+horizon, onHorizon:(ev)=>this.setHorizon(ev),
       projLabel, projValueStr, projValueStyle, verdictStr, verdictStyle, tipStr, hasTip:!!tipStr,
-      hasEntries:n>0, noEntries:n===0, hasBars:m>0, noBars:(n>0 && m===0),
-      nwLine, nwArea, nwDots, nwMaxLabel:fmt(dmax,false), nwMinLabel:fmt(dmin,false),
+      hasEntries:n>0, noEntries:n===0, demoMode:!!this.state.isDemo, hasBars:m>0, noBars:(n>0 && m===0),
+      nwLine, nwArea, nwDots, accountLines, chartHoverLabel, hoverGuide, nwMaxLabel:fmt(dmax,false), nwMinLabel:fmt(dmin,false),
       bars, zeroLineY,
       accCols, rows,
-      addAccount:()=>this.addAccount(), addPeriod:()=>this.addPeriod(), onImport:(ev)=>this.onImport(ev), onExport:()=>this.onExport(), onReset:()=>this.onReset(),
+      loadDemo:()=>this.loadDemo(), clearDemo:()=>this.clearDemo(), addAccount:()=>this.addAccount(), addPeriod:()=>this.addPeriod(), onImport:(ev)=>this.onImport(ev), onExport:()=>this.onExport(), onReset:()=>this.onReset(),
       periodCountStr: n+' period'+(n===1?'':'s')+' · '+accounts.length+' account'+(accounts.length===1?'':'s')
     };
   }
