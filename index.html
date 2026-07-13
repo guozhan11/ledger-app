@@ -239,13 +239,7 @@ class Component extends DCLogic {
   }
 
   seed(){
-    const mk = (name)=>({id:this.uid(), name});
-    const boa=mk('Account 1'), chase=mk('Account 2'), rh=mk('Account 3'), boc=mk('Account 4');
-    const entries=[
-      {id:this.uid(), date:'', note:'', balances:{[boa.id]:0,[chase.id]:0,[rh.id]:0,[boc.id]:0}},
-      {id:this.uid(), date:'', note:'', balances:{[boa.id]:0,[chase.id]:0,[rh.id]:0,[boc.id]:0}}
-    ];
-    return {accounts:[boa,chase,rh,boc], entries, goal:100000, horizon:12};
+    return {accounts:[], entries:[], goal:100000, horizon:12};
   }
 
   persist(){
