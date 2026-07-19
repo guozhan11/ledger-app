@@ -104,13 +104,14 @@
           <div style="font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;">{{ chartHoverLabel }}</div>
         </div>
         <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:8px 0 2px;">
-          <span style="font-size:10.5px;color:var(--muted);margin-right:2px;">Compare</span>
+          <span style="font-size:10.5px;color:var(--muted);margin-right:2px;">Accounts included</span>
           <sc-for list="{{ accountLines }}" as="series" hint-placeholder-count="4">
             <button key="{{ series.key }}" onClick="{{ series.onToggle }}" style="{{ series.buttonStyle }}">
               <span style="{{ series.dotStyle }}"></span>{{ series.name }}
             </button>
           </sc-for>
         </div>
+        <div style="position:relative;">
         <svg viewBox="0 0 720 240" width="100%" style="height:auto;display:block;overflow:visible;">
           <path d="{{ nwArea }}" fill="var(--accent-soft)" stroke="none"></path>
           <sc-if value="{{ hoverGuide.show }}" hint-placeholder-val="{{ false }}">
@@ -128,9 +129,16 @@
               <circle cx="{{ d.cx }}" cy="{{ d.cy }}" r="{{ d.r }}" fill="var(--surface)" stroke="var(--accent)" stroke-width="2.5" style="pointer-events:none;"></circle>
             </g>
           </sc-for>
-          <text x="666" y="26" font-size="11" fill="var(--muted)" font-family="Space Grotesk">{{ nwMaxLabel }}</text>
-          <text x="666" y="214" font-size="11" fill="var(--muted)" font-family="Space Grotesk">{{ nwMinLabel }}</text>
         </svg>
+        <div style="position:absolute;inset:0;pointer-events:none;overflow:hidden;">
+          <div style="{{ totalLegendStyle }}">Total</div>
+          <sc-for list="{{ accountLines }}" as="series" hint-placeholder-count="4">
+            <sc-if value="{{ series.active }}" hint-placeholder-val="{{ false }}">
+              <div key="{{ series.key }}" style="{{ series.legendStyle }}">{{ series.name }}</div>
+            </sc-if>
+          </sc-for>
+        </div>
+        </div>
       </div>
       <div style="background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 18px 12px;">
         <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
@@ -169,10 +177,9 @@
             </div>
           </div>
           <div>
-            <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">Within</div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">Target month</div>
             <div style="display:flex;align-items:baseline;gap:6px;">
-              <input key="{{ horizonKey }}" inputmode="numeric" defaultValue="{{ horizonDefault }}" onBlur="{{ onHorizon }}" style="font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:600;width:52px;border:none;border-bottom:1.5px solid var(--line);background:transparent;color:var(--ink);padding:4px 2px;text-align:center;font-variant-numeric:tabular-nums;" style-focus="border-bottom-color:var(--accent)">
-              <span style="font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:500;color:var(--muted);">months</span>
+              <input key="{{ targetMonthKey }}" type="month" min="{{ minTargetMonth }}" defaultValue="{{ targetMonthDefault }}" onBlur="{{ onTargetMonth }}" style="font-family:'Space Grotesk',sans-serif;font-size:18px;font-weight:600;width:158px;border:none;border-bottom:1.5px solid var(--line);background:transparent;color:var(--ink);padding:4px 2px;font-variant-numeric:tabular-nums;" style-focus="border-bottom-color:var(--accent)">
             </div>
           </div>
         </div>
@@ -271,16 +278,32 @@ class Component extends DCLogic {
 
   uid(){ return 'id' + Math.random().toString(36).slice(2,9) + Date.now().toString(36).slice(-3); }
 
+  monthAfter(count){
+    const now=new Date();
+    const d=new Date(now.getFullYear(), now.getMonth()+count, 1);
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+  }
+
   load(){
     try{
       const raw = localStorage.getItem('spendtrack.v1');
-      if(raw){ const d = JSON.parse(raw); if(d && d.accounts && d.entries) return {accounts:d.accounts, entries:d.entries, goal:(d.goal!=null?d.goal:100000), horizon:(d.horizon!=null?d.horizon:12), isDemo:!!d.isDemo, visibleAccounts:{}, hoveredPoint:null}; }
+      if(raw){
+        const d=JSON.parse(raw);
+        if(d && d.accounts && d.entries){
+          const legacyHorizon=d.horizon!=null?Math.max(1,Math.round(d.horizon)):12;
+          const targetMonth=/^\d{4}-(0[1-9]|1[0-2])$/.test(d.targetMonth||'') ? d.targetMonth : this.monthAfter(legacyHorizon);
+          const accountIds=d.accounts.map(a=>a.id);
+          const savedIds=Array.isArray(d.selectedAccountIds) ? d.selectedAccountIds.filter(id=>accountIds.includes(id)) : [];
+          const selectedAccountIds=savedIds.length?savedIds:accountIds;
+          return {accounts:d.accounts, entries:d.entries, goal:(d.goal!=null?d.goal:100000), targetMonth, isDemo:!!d.isDemo, selectedAccountIds, hoveredPoint:null};
+        }
+      }
     }catch(e){}
     return this.seed();
   }
 
   seed(){
-    return {accounts:[], entries:[], goal:100000, horizon:12, isDemo:false, visibleAccounts:{}, hoveredPoint:null};
+    return {accounts:[], entries:[], goal:100000, targetMonth:this.monthAfter(12), isDemo:false, selectedAccountIds:[], hoveredPoint:null};
   }
 
   demoState(){
@@ -303,9 +326,9 @@ class Component extends DCLogic {
         row('2026-07-05',6200,24300,30750,-1050,'Demo portfolio')
       ],
       goal:75000,
-      horizon:12,
+      targetMonth:this.monthAfter(12),
       isDemo:true,
-      visibleAccounts:{},
+      selectedAccountIds:[checking.id,savings.id,investments.id,card.id],
       hoveredPoint:null
     };
   }
@@ -320,7 +343,7 @@ class Component extends DCLogic {
   }
 
   persist(){
-    try{ localStorage.setItem('spendtrack.v1', JSON.stringify({accounts:this.state.accounts, entries:this.state.entries, goal:this.state.goal, horizon:this.state.horizon, isDemo:!!this.state.isDemo})); }catch(e){}
+    try{ localStorage.setItem('spendtrack.v1', JSON.stringify({accounts:this.state.accounts, entries:this.state.entries, goal:this.state.goal, targetMonth:this.state.targetMonth, selectedAccountIds:this.state.selectedAccountIds||[], isDemo:!!this.state.isDemo})); }catch(e){}
   }
 
   evalExpr(str){
@@ -345,10 +368,11 @@ class Component extends DCLogic {
   removeAccount(id){
     this.setState(s=>({
       accounts: s.accounts.filter(a=> a.id!==id),
-      entries: s.entries.map(e=>{ const b={...e.balances}; delete b[id]; return {...e, balances:b}; })
+      entries: s.entries.map(e=>{ const b={...e.balances}; delete b[id]; return {...e, balances:b}; }),
+      selectedAccountIds:(()=>{ const remaining=s.accounts.filter(a=>a.id!==id); const selected=(s.selectedAccountIds||s.accounts.map(a=>a.id)).filter(accountId=>accountId!==id); return selected.length?selected:remaining.map(a=>a.id); })()
     }), ()=>this.persist());
   }
-  addAccount(){ this.setState(s=>({accounts:[...s.accounts, {id:this.uid(), name:'Account '+(s.accounts.length+1)}]}), ()=>this.persist()); }
+  addAccount(){ this.setState(s=>{ const account={id:this.uid(),name:'Account '+(s.accounts.length+1)}; return {accounts:[...s.accounts,account],selectedAccountIds:[...(s.selectedAccountIds||s.accounts.map(a=>a.id)),account.id]}; }, ()=>this.persist()); }
   addPeriod(){
     const cadence = this.props.cadenceDays!=null ? this.props.cadenceDays : 7;
     const es = [...this.state.entries].sort((a,b)=> a.date<b.date?-1:1);
@@ -361,8 +385,14 @@ class Component extends DCLogic {
     this.setState(s=>({entries:[...s.entries, {id:this.uid(), date, note:'', balances:{}}]}), ()=>this.persist());
   }
   setGoal(ev){ const v=this.evalExpr(ev.target.value); if(v==null) return; this.setState({goal:v}, ()=>this.persist()); }
-  setHorizon(ev){ let v=this.evalExpr(ev.target.value); if(v==null) return; v=Math.max(1, Math.round(v)); this.setState({horizon:v}, ()=>this.persist()); }
-  toggleAccount(id){ this.setState(s=>({visibleAccounts:{...(s.visibleAccounts||{}),[id]:!((s.visibleAccounts||{})[id])}})); }
+  setTargetMonth(ev){ const v=ev.target.value; if(/^\d{4}-(0[1-9]|1[0-2])$/.test(v)) this.setState({targetMonth:v}, ()=>this.persist()); }
+  toggleAccount(id){
+    this.setState(s=>{
+      const selected=s.selectedAccountIds||s.accounts.map(a=>a.id);
+      if(selected.includes(id)) return selected.length>1?{selectedAccountIds:selected.filter(accountId=>accountId!==id)}:{};
+      return {selectedAccountIds:[...selected,id]};
+    },()=>this.persist());
+  }
   hoverPoint(index){ this.setState({hoveredPoint:index}); }
   clearHover(){ this.setState({hoveredPoint:null}); }
   onReset(){ if(window.confirm('Reset all local data? This clears your saved accounts and entries.')){ this.setState(this.seed(), ()=>this.persist()); } }
@@ -470,7 +500,7 @@ class Component extends DCLogic {
           importedAccounts.forEach((account,key)=>{ if(row.values[key]!=null) entry.balances[account.id]=row.values[key]; });
           if(row.note) entry.note=row.note;
         });
-        return {accounts,entries,isDemo:false,visibleAccounts:{},hoveredPoint:null};
+        return {accounts,entries,isDemo:false,selectedAccountIds:accounts.map(a=>a.id),hoveredPoint:null};
       },()=>{ this.persist(); window.alert('Imported '+parsed.length+' row'+(parsed.length===1?'':'s')+' successfully.'); });
     }catch(error){
       window.alert('Import failed: '+(error && error.message ? error.message : error));
@@ -528,19 +558,24 @@ class Component extends DCLogic {
         style:{fontSize:'13px',fontWeight:600,fontVariantNumeric:'tabular-nums',color:lastChange>=0?'var(--pos)':'var(--neg)'}};
     }
 
-    // goal + horizon projection
+    // goal + fixed target-month projection
     const goalPct = goal>0 ? Math.max(0,Math.min(100, current/goal*100)) : 0;
-    const horizon = this.state.horizon || 12;
-    const requiredMonthly = (goal-current)/horizon; // net change/mo needed to hit goal in `horizon` months
+    const targetMonth = this.state.targetMonth || this.monthAfter(12);
+    const targetParts=targetMonth.split('-').map(Number);
+    const now=new Date();
+    const horizon=(targetParts[0]-now.getFullYear())*12+(targetParts[1]-1-now.getMonth());
+    const targetDate=new Date(targetParts[0],targetParts[1]-1,1);
+    const targetLabel=monthYr(targetDate);
+    const requiredMonthly = horizon>0 ? (goal-current)/horizon : null; // net change/mo needed by the fixed target month
 
-    let projLabel = 'Projected in '+horizon+' month'+(horizon===1?'':'s');
+    let projLabel = 'Projected by '+targetLabel;
     const projBase={fontFamily:"'Space Grotesk',sans-serif",fontSize:'26px',fontWeight:600,letterSpacing:'-.01em',fontVariantNumeric:'tabular-nums'};
     const verdBase={fontSize:'13px',marginTop:'8px',lineHeight:1.45};
     let projValueStr='—', projValueStyle={...projBase,color:'var(--muted)'};
-    let verdictStr='Add two or more periods to project a rate.', verdictStyle={...verdBase,color:'var(--muted)'};
+    let verdictStr=horizon>0?'Add two or more periods to project a rate.':'Target month has passed. Choose a future month.', verdictStyle={...verdBase,color:'var(--muted)'};
     let tipStr='';
 
-    if(n>1 && perMonth!=null){
+    if(horizon>0 && n>1 && perMonth!=null){
       const projected = current + perMonth*horizon;
       projValueStr = fmt(projected,false);
       const onTrack = projected >= goal;
@@ -555,23 +590,24 @@ class Component extends DCLogic {
         verdictStr = "You'll be "+fmt(shortfall,false)+" short.";
         verdictStyle = {...verdBase, color:'var(--neg)',fontWeight:600};
         tipStr = ceiling>0
-          ? ('Spend under '+fmt(ceiling,false)+' per month to reach '+fmt(goal,false)+' in '+horizon+' months.')
-          : ('Add about '+fmt(requiredMonthly,false)+' per month to reach '+fmt(goal,false)+' in '+horizon+' months.');
+          ? ('Spend under '+fmt(ceiling,false)+' per month to reach '+fmt(goal,false)+' by '+targetLabel+'.')
+          : ('Add about '+fmt(requiredMonthly,false)+' per month to reach '+fmt(goal,false)+' by '+targetLabel+'.');
       }
     }
 
     // ---- charts ----
-    const W=720,H=240,PADL=12,PADR=58,PADT=18,PADB=26;
-    const totals=wt.map(e=>e.total);
+    const W=720,H=240,PADL=12,PADR=126,PADT=18,PADB=26;
     const palette=['#b5714a','#6f8f72','#7669a8','#b55b75','#4c8d9b','#98703f'];
-    const visibleAccounts=this.state.visibleAccounts||{};
+    const selectedIds=new Set(this.state.selectedAccountIds||accounts.map(a=>a.id));
+    const selectedAccounts=accounts.filter(a=>selectedIds.has(a.id));
+    const chartTotals=wt.map(e=>selectedAccounts.reduce((sum,a)=>{ const v=e.balances[a.id]; return sum+(typeof v==='number'&&isFinite(v)?v:0); },0));
     const rawAccountSeries=accounts.map((account,i)=>({
       account,
       color:palette[i%palette.length],
-      active:!!visibleAccounts[account.id],
+      active:selectedIds.has(account.id),
       values:wt.map(e=>{ const v=e.balances[account.id]; return typeof v==='number'&&isFinite(v)?v:null; })
     }));
-    const axisValues=[...totals];
+    const axisValues=[...chartTotals];
     rawAccountSeries.forEach(s=>{ if(s.active) s.values.forEach(v=>{ if(v!=null) axisValues.push(v); }); });
     let minV=axisValues.length?Math.min(...axisValues):0, maxV=axisValues.length?Math.max(...axisValues):1;
     if(!isFinite(minV)){minV=0;maxV=1;}
@@ -580,9 +616,9 @@ class Component extends DCLogic {
     const xAt=(i)=> n<=1 ? (PADL+(W-PADL-PADR)/2) : PADL + i/(n-1)*(W-PADL-PADR);
     const yAt=(v)=> H-PADB - (v-dmin)/(dmax-dmin)*(H-PADT-PADB);
     const hoveredPoint=Number.isInteger(this.state.hoveredPoint)&&this.state.hoveredPoint>=0&&this.state.hoveredPoint<n ? this.state.hoveredPoint : null;
-    const nwDots=wt.map((e,i)=>({
+    const nwDots=chartTotals.map((total,i)=>({
       cx:+xAt(i).toFixed(1),
-      cy:+yAt(e.total).toFixed(1),
+      cy:+yAt(total).toFixed(1),
       r:hoveredPoint===i?6:(i===n-1?4.5:3),
       onEnter:()=>this.hoverPoint(i),
       onLeave:()=>this.clearHover()
@@ -604,14 +640,39 @@ class Component extends DCLogic {
         name:series.account.name,
         color:series.color,
         path,
+        endIndex:(()=>{ for(let i=series.values.length-1;i>=0;i--) if(series.values[i]!=null) return i; return -1; })(),
+        values:series.values,
         active:series.active,
         onToggle:()=>this.toggleAccount(series.account.id),
         buttonStyle:{display:'inline-flex',alignItems:'center',gap:'5px',border:'1px solid '+(series.active?series.color:'var(--line)'),background:series.active?'var(--accent-soft)':'transparent',color:series.active?'var(--ink)':'var(--muted)',fontFamily:'inherit',fontSize:'10.5px',fontWeight:500,padding:'4px 7px',borderRadius:'999px',cursor:'pointer',opacity:series.active?1:.72},
         dotStyle:{display:'inline-block',width:'6px',height:'6px',borderRadius:'50%',background:series.color}
       };
     });
+    const labelSeeds=[];
+    if(n){ const last=nwDots[nwDots.length-1]; labelSeeds.push({key:'total',name:'Total',color:'var(--accent)',weight:600,anchorX:last.cx,anchorY:last.cy}); }
+    accountLines.forEach(series=>{
+      if(!series.active||series.endIndex<0) return;
+      const anchorX=+xAt(series.endIndex).toFixed(1), anchorY=+yAt(series.values[series.endIndex]).toFixed(1);
+      const name=series.name.length>14?series.name.slice(0,13)+'…':series.name;
+      labelSeeds.push({key:series.key,name,color:series.color,weight:500,anchorX,anchorY});
+    });
+    const lineEndLabels=labelSeeds.sort((a,b)=>a.anchorY-b.anchorY).map(label=>({...label,y:Math.max(14,Math.min(220,label.anchorY))}));
+    for(let i=1;i<lineEndLabels.length;i++) lineEndLabels[i].y=Math.max(lineEndLabels[i].y,lineEndLabels[i-1].y+15);
+    if(lineEndLabels.length&&lineEndLabels[lineEndLabels.length-1].y>220){ const shift=lineEndLabels[lineEndLabels.length-1].y-220; lineEndLabels.forEach(label=>{ label.y-=shift; }); }
+    for(let i=lineEndLabels.length-2;i>=0;i--) lineEndLabels[i].y=Math.min(lineEndLabels[i].y,lineEndLabels[i+1].y-15);
+    if(lineEndLabels.length&&lineEndLabels[0].y<14){ const shift=14-lineEndLabels[0].y; lineEndLabels.forEach(label=>{ label.y+=shift; }); }
+    lineEndLabels.forEach(label=>{
+      label.guideX=W-PADR+10; label.x=W-PADR+15; label.y=+label.y.toFixed(1);
+      label.legendStyle={position:'absolute',left:(label.x/W*100).toFixed(2)+'%',top:(label.y/H*100).toFixed(2)+'%',width:((W-label.x-4)/W*100).toFixed(2)+'%',transform:'translateY(-50%)',fontFamily:"'IBM Plex Sans',sans-serif",fontSize:'11px',fontWeight:label.weight,lineHeight:'16px',color:label.color,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'};
+    });
+    let totalLegendStyle={display:'none'};
+    lineEndLabels.forEach(label=>{
+      if(label.key==='total') totalLegendStyle=label.legendStyle;
+      else { const series=accountLines.find(item=>item.key===label.key); if(series) series.legendStyle=label.legendStyle; }
+    });
     const hoverEntry=hoveredPoint!=null?wt[hoveredPoint]:(n?wt[n-1]:null);
-    const chartHoverLabel=hoverEntry?short(hoverEntry.date)+' · '+fmt(hoverEntry.total,false):'—';
+    const hoverTotal=hoveredPoint!=null?chartTotals[hoveredPoint]:(n?chartTotals[n-1]:null);
+    const chartHoverLabel=hoverEntry?short(hoverEntry.date)+' · '+fmt(hoverTotal,false):'—';
     const hoverGuide={show:hoveredPoint!=null,x:hoveredPoint!=null?+xAt(hoveredPoint).toFixed(1):0};
 
     const changes=wt.slice(1).map(e=>({val:e.change, date:short(e.date)}));
@@ -659,10 +720,10 @@ class Component extends DCLogic {
       goalPctStr: goalPct.toFixed(0)+'%', goalStr:fmt(goal,false), goalBarWidth:goalPct.toFixed(1)+'%',
       goalBarStyle:{height:'100%',background:'var(--accent)',borderRadius:'6px',transition:'width .4s',width:goalPct.toFixed(1)+'%'},
       goalDefault:''+goal, goalKey:'goal'+goal, onGoal:(ev)=>this.setGoal(ev),
-      horizonDefault:''+horizon, horizonKey:'hz'+horizon, onHorizon:(ev)=>this.setHorizon(ev),
+      targetMonthDefault:targetMonth, targetMonthKey:'target'+targetMonth, minTargetMonth:this.monthAfter(1), onTargetMonth:(ev)=>this.setTargetMonth(ev),
       projLabel, projValueStr, projValueStyle, verdictStr, verdictStyle, tipStr, hasTip:!!tipStr,
       hasEntries:n>0, noEntries:n===0, demoMode:!!this.state.isDemo, hasBars:m>0, noBars:(n>0 && m===0),
-      nwLine, nwArea, nwDots, accountLines, chartHoverLabel, hoverGuide, nwMaxLabel:fmt(dmax,false), nwMinLabel:fmt(dmin,false),
+      nwLine, nwArea, nwDots, accountLines, totalLegendStyle, chartHoverLabel, hoverGuide,
       bars, zeroLineY,
       accCols, rows,
       loadDemo:()=>this.loadDemo(), clearDemo:()=>this.clearDemo(), addAccount:()=>this.addAccount(), addPeriod:()=>this.addPeriod(), onImport:(ev)=>this.onImport(ev), onExport:()=>this.onExport(), onReset:()=>this.onReset(),
