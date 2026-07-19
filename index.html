@@ -147,11 +147,13 @@
             <div style="font-size:11px;color:var(--muted);margin-top:3px;">Each period normalized to 30 days</div>
           </div>
           <div style="text-align:right;">
-            <div style="font-size:12px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;">{{ paceHoverLabel }}</div>
-            <div style="font-size:10.5px;color:var(--muted);margin-top:3px;">Goal pace · {{ goalPaceStr }}</div>
+            <div style="font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums;">{{ paceHoverRange }}</div>
+            <div style="{{ paceHoverStyle }}">{{ paceHoverStatus }}</div>
+            <div style="font-size:10.5px;color:var(--muted);margin-top:3px;">{{ goalPaceLabel }}</div>
           </div>
         </div>
         <sc-if value="{{ hasBars }}" hint-placeholder-val="{{ true }}">
+        <div style="position:relative;">
         <svg viewBox="0 0 720 210" width="100%" style="height:auto;display:block;overflow:visible;">
           <line x1="12" x2="662" y1="{{ zeroLineY }}" y2="{{ zeroLineY }}" stroke="var(--line)" stroke-width="1.5"></line>
           <sc-if value="{{ goalPaceGuide.show }}" hint-placeholder-val="{{ true }}">
@@ -163,6 +165,16 @@
             </g>
           </sc-for>
         </svg>
+        <div style="position:absolute;inset:0;pointer-events:none;overflow:hidden;">
+          <div style="{{ zeroLabelStyle }}">0 · no change</div>
+          <sc-if value="{{ goalPaceGuide.show }}" hint-placeholder-val="{{ true }}">
+            <div style="{{ goalLineLabelStyle }}">{{ goalLineLabelText }}</div>
+          </sc-if>
+          <sc-for list="{{ bars }}" as="b" hint-placeholder-count="3">
+            <div key="{{ b.key }}" style="{{ b.valueStyle }}">{{ b.valueLabel }}</div>
+          </sc-for>
+        </div>
+        </div>
         <div style="display:grid;grid-template-columns:repeat({{ barColumnCount }},minmax(0,1fr));padding:0 58px 0 12px;margin-top:-4px;">
           <sc-for list="{{ bars }}" as="b" hint-placeholder-count="3">
             <div key="{{ b.key }}" style="font-size:10px;color:var(--muted);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ b.date }}</div>
@@ -712,10 +724,18 @@ class Component extends DCLogic {
     const m=changes.length;
     const hoveredBarIndex=Number.isInteger(this.state.hoveredBarIndex)&&this.state.hoveredBarIndex>=0&&this.state.hoveredBarIndex<m?this.state.hoveredBarIndex:null;
     const hoveredBar=hoveredBarIndex!=null?changes[hoveredBarIndex]:(m?changes[m-1]:null);
-    const paceHoverLabel=hoveredBar?hoveredBar.range+' · '+signed(hoveredBar.val,false)+'/mo':'—';
-    const goalPaceStr=requiredMonthly!=null?signed(requiredMonthly,false)+'/mo':'Set a future date';
+    const paceHoverRange=hoveredBar?hoveredBar.range:'—';
+    const paceHoverStatus=hoveredBar?(hoveredBar.val>=0?'Growing ':'Shrinking ')+signed(hoveredBar.val,false)+'/mo':'Add another period';
+    const paceHoverStyle={fontSize:'12px',fontWeight:600,marginTop:'2px',fontVariantNumeric:'tabular-nums',color:hoveredBar==null?'var(--muted)':hoveredBar.val>=0?'var(--pos)':'var(--neg)'};
+    const goalPaceLabel=requiredMonthly==null?'Set a future target date':requiredMonthly>=0?'Needed growth · '+signed(requiredMonthly,false)+'/mo':'Allowed decline · '+fmt(Math.abs(requiredMonthly),false)+'/mo';
+    const goalLineLabelText=requiredMonthly==null?'':requiredMonthly>=0?'Goal · '+signed(requiredMonthly,false)+'/mo':'Limit · −'+fmt(Math.abs(requiredMonthly),false)+'/mo';
     const paceGap=perMonth!=null&&requiredMonthly!=null?perMonth-requiredMonthly:null;
-    const paceInsightStr=paceGap==null?'Add two or more periods and a future target date to compare your pace.':paceGap>=0?'Current pace is '+fmt(paceGap,false)+'/mo ahead of the goal pace.':'Current pace is '+fmt(Math.abs(paceGap),false)+'/mo behind the goal pace.';
+    let paceInsightStr='Add two or more periods and a future target date to compare your pace.';
+    if(paceGap!=null){
+      if(perMonth<0&&requiredMonthly<0) paceInsightStr=paceGap>=0?'Net worth is shrinking by '+fmt(Math.abs(perMonth),false)+'/mo. Your goal allows up to '+fmt(Math.abs(requiredMonthly),false)+'/mo, leaving a '+fmt(paceGap,false)+'/mo buffer.':'Net worth is shrinking by '+fmt(Math.abs(perMonth),false)+'/mo — '+fmt(Math.abs(paceGap),false)+'/mo faster than your goal allows.';
+      else if(perMonth<0&&requiredMonthly>=0) paceInsightStr='Net worth is shrinking by '+fmt(Math.abs(perMonth),false)+'/mo. Reaching the goal requires '+fmt(requiredMonthly,false)+'/mo of growth — a '+fmt(Math.abs(paceGap),false)+'/mo shortfall.';
+      else paceInsightStr=paceGap>=0?'Net worth is growing '+fmt(paceGap,false)+'/mo faster than the goal requires.':'Net worth is growing, but remains '+fmt(Math.abs(paceGap),false)+'/mo behind the goal pace.';
+    }
     const paceInsightStyle={fontSize:'11.5px',fontWeight:600,lineHeight:1.45,marginTop:'10px',padding:'8px 10px',borderRadius:'8px',background:'var(--accent-soft)',color:paceGap==null?'var(--muted)':paceGap>=0?'var(--pos)':'var(--neg)'};
     const cvals=[...changes.map(c=>c.val),...(requiredMonthly!=null?[requiredMonthly]:[])];
     let cmin=Math.min(0,...cvals), cmax=Math.max(0,...cvals);
@@ -726,13 +746,18 @@ class Component extends DCLogic {
     const cyOf=(v)=> CH-CPADB - (v-cdmin)/(cdmax-cdmin)*(CH-CPADT-CPADB);
     const zeroLineY=+cyOf(0).toFixed(1);
     const goalPaceGuide={show:requiredMonthly!=null,y:requiredMonthly!=null?+cyOf(requiredMonthly).toFixed(1):0};
+    const zeroLabelStyle={position:'absolute',left:(CPADL/W*100).toFixed(2)+'%',top:((zeroLineY-16)/CH*100).toFixed(2)+'%',fontSize:'9.5px',fontWeight:500,color:'var(--muted)',background:'var(--surface)',padding:'1px 4px',borderRadius:'4px',whiteSpace:'nowrap'};
+    const goalLineLabelStyle={position:'absolute',right:(CPADR/W*100).toFixed(2)+'%',top:(goalPaceGuide.y/CH*100).toFixed(2)+'%',transform:'translateY(-50%)',fontSize:'9.5px',fontWeight:600,color:'var(--accent)',background:'var(--surface)',padding:'1px 4px',borderRadius:'4px',whiteSpace:'nowrap'};
     const slot=(W-CPADL-CPADR)/Math.max(m,1);
     const bw=Math.min(46, slot*0.5);
     const bars=changes.map((c,i)=>{
       const cx=CPADL + slot*(i+0.5);
       const y=cyOf(c.val); const top=Math.min(y,zeroLineY); const h=Math.max(Math.abs(y-zeroLineY),2);
+      const inside=h>=28;
+      const valueY=inside?top+h/2:(c.val>=0?top-10:top+h+10);
+      const valueStyle={display:m<=4||hoveredBarIndex===i?'block':'none',position:'absolute',left:(cx/W*100).toFixed(2)+'%',top:(valueY/CH*100).toFixed(2)+'%',width:(Math.max(slot*.92,90)/W*100).toFixed(2)+'%',transform:'translate(-50%,-50%)',textAlign:'center',fontSize:'9.5px',fontWeight:600,fontVariantNumeric:'tabular-nums',color:inside?'#fff':c.val>=0?'var(--pos)':'var(--neg)',whiteSpace:'nowrap'};
       return {key:'pace-'+i,x:+(cx-bw/2).toFixed(1),y:+top.toFixed(1),w:+bw.toFixed(1),h:+h.toFixed(1),
-        fill:c.val>=0?'var(--pos)':'var(--neg)',date:c.date,opacity:hoveredBarIndex==null||hoveredBarIndex===i?1:.42,
+        fill:c.val>=0?'var(--pos)':'var(--neg)',date:c.date,valueLabel:signed(c.val,false)+'/mo',valueStyle,opacity:hoveredBarIndex==null||hoveredBarIndex===i?1:.42,
         onEnter:()=>this.hoverBar(i),onLeave:()=>this.clearBar()};
     });
 
@@ -766,7 +791,7 @@ class Component extends DCLogic {
       projLabel, projValueStr, projValueStyle, verdictStr, verdictStyle, tipStr, hasTip:!!tipStr,
       hasEntries:n>0, noEntries:n===0, demoMode:!!this.state.isDemo, hasBars:m>0, noBars:(n>0 && m===0),
       nwLine, nwArea, nwDots, accountLines, totalLegendStyle, chartHoverLabel, hoverGuide,
-      bars, barColumnCount:Math.max(m,1), zeroLineY, goalPaceGuide, paceHoverLabel, goalPaceStr, paceInsightStr, paceInsightStyle,
+      bars, barColumnCount:Math.max(m,1), zeroLineY, zeroLabelStyle, goalPaceGuide, goalPaceLabel, goalLineLabelText, goalLineLabelStyle, paceHoverRange, paceHoverStatus, paceHoverStyle, paceInsightStr, paceInsightStyle,
       accCols, rows,
       loadDemo:()=>this.loadDemo(), clearDemo:()=>this.clearDemo(), addAccount:()=>this.addAccount(), addPeriod:()=>this.addPeriod(), onImport:(ev)=>this.onImport(ev), onExport:()=>this.onExport(), onReset:()=>this.onReset(),
       periodCountStr: n+' period'+(n===1?'':'s')+' · '+accounts.length+' account'+(accounts.length===1?'':'s')
