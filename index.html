@@ -141,21 +141,34 @@
         </div>
       </div>
       <div style="background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 18px 12px;">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
-          <div style="font-weight:600;font-size:14px;">Change per period</div>
-          <div style="font-size:12px;color:var(--muted);">green = saved · red = spent</div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:6px;">
+          <div>
+            <div style="font-weight:600;font-size:14px;">Monthly pace</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:3px;">Each period normalized to 30 days</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:12px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;">{{ paceHoverLabel }}</div>
+            <div style="font-size:10.5px;color:var(--muted);margin-top:3px;">Goal pace · {{ goalPaceStr }}</div>
+          </div>
         </div>
         <sc-if value="{{ hasBars }}" hint-placeholder-val="{{ true }}">
-        <svg viewBox="0 0 720 240" width="100%" style="height:auto;display:block;overflow:visible;">
+        <svg viewBox="0 0 720 210" width="100%" style="height:auto;display:block;overflow:visible;">
           <line x1="12" x2="662" y1="{{ zeroLineY }}" y2="{{ zeroLineY }}" stroke="var(--line)" stroke-width="1.5"></line>
+          <sc-if value="{{ goalPaceGuide.show }}" hint-placeholder-val="{{ true }}">
+            <line x1="12" x2="662" y1="{{ goalPaceGuide.y }}" y2="{{ goalPaceGuide.y }}" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="6 5" opacity=".65"></line>
+          </sc-if>
           <sc-for list="{{ bars }}" as="b" hint-placeholder-count="3">
-            <g>
-              <rect x="{{ b.x }}" y="{{ b.y }}" width="{{ b.w }}" height="{{ b.h }}" rx="3" fill="{{ b.fill }}"></rect>
-              <text x="{{ b.labelX }}" y="{{ b.labelY }}" font-size="11" text-anchor="middle" fill="var(--ink)" font-family="Space Grotesk">{{ b.val }}</text>
-              <text x="{{ b.labelX }}" y="232" font-size="11" text-anchor="middle" fill="var(--muted)">{{ b.date }}</text>
+            <g onMouseEnter="{{ b.onEnter }}" onMouseLeave="{{ b.onLeave }}">
+              <rect x="{{ b.x }}" y="{{ b.y }}" width="{{ b.w }}" height="{{ b.h }}" rx="4" fill="{{ b.fill }}" opacity="{{ b.opacity }}" style="cursor:crosshair;"></rect>
             </g>
           </sc-for>
         </svg>
+        <div style="display:grid;grid-template-columns:repeat({{ barColumnCount }},minmax(0,1fr));padding:0 58px 0 12px;margin-top:-4px;">
+          <sc-for list="{{ bars }}" as="b" hint-placeholder-count="3">
+            <div key="{{ b.key }}" style="font-size:10px;color:var(--muted);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ b.date }}</div>
+          </sc-for>
+        </div>
+        <div style="{{ paceInsightStyle }}">{{ paceInsightStr }}</div>
         </sc-if>
         <sc-if value="{{ noBars }}" hint-placeholder-val="{{ false }}">
           <div style="padding:44px 12px;text-align:center;color:var(--muted);font-size:13px;">Add a second period to see change over time.</div>
@@ -407,6 +420,8 @@ class Component extends DCLogic {
   }
   hoverPoint(index){ this.setState({hoveredPoint:index}); }
   clearHover(){ this.setState({hoveredPoint:null}); }
+  hoverBar(index){ this.setState({hoveredBarIndex:index}); }
+  clearBar(){ this.setState({hoveredBarIndex:null}); }
   onReset(){ if(window.confirm('Reset all local data? This clears your saved accounts and entries.')){ this.setState(this.seed(), ()=>this.persist()); } }
   onExport(){
     const A=this.state.accounts;
@@ -689,23 +704,36 @@ class Component extends DCLogic {
     const chartHoverLabel=hoverEntry?short(hoverEntry.date)+' · '+fmt(hoverTotal,false):'—';
     const hoverGuide={show:hoveredPoint!=null,x:hoveredPoint!=null?+xAt(hoveredPoint).toFixed(1):0};
 
-    const changes=wt.slice(1).map(e=>({val:e.change, date:short(e.date)}));
+    const changes=[];
+    for(let i=1;i<wt.length;i++){
+      const days=dayNumber(wt[i].date)-dayNumber(wt[i-1].date);
+      if(days>0) changes.push({val:wt[i].change/days*30,date:short(wt[i].date),range:short(wt[i-1].date)+'–'+short(wt[i].date)});
+    }
     const m=changes.length;
-    const cvals=changes.map(c=>c.val);
+    const hoveredBarIndex=Number.isInteger(this.state.hoveredBarIndex)&&this.state.hoveredBarIndex>=0&&this.state.hoveredBarIndex<m?this.state.hoveredBarIndex:null;
+    const hoveredBar=hoveredBarIndex!=null?changes[hoveredBarIndex]:(m?changes[m-1]:null);
+    const paceHoverLabel=hoveredBar?hoveredBar.range+' · '+signed(hoveredBar.val,false)+'/mo':'—';
+    const goalPaceStr=requiredMonthly!=null?signed(requiredMonthly,false)+'/mo':'Set a future date';
+    const paceGap=perMonth!=null&&requiredMonthly!=null?perMonth-requiredMonthly:null;
+    const paceInsightStr=paceGap==null?'Add two or more periods and a future target date to compare your pace.':paceGap>=0?'Current pace is '+fmt(paceGap,false)+'/mo ahead of the goal pace.':'Current pace is '+fmt(Math.abs(paceGap),false)+'/mo behind the goal pace.';
+    const paceInsightStyle={fontSize:'11.5px',fontWeight:600,lineHeight:1.45,marginTop:'10px',padding:'8px 10px',borderRadius:'8px',background:'var(--accent-soft)',color:paceGap==null?'var(--muted)':paceGap>=0?'var(--pos)':'var(--neg)'};
+    const cvals=[...changes.map(c=>c.val),...(requiredMonthly!=null?[requiredMonthly]:[])];
     let cmin=Math.min(0,...cvals), cmax=Math.max(0,...cvals);
     if(!isFinite(cmin)){cmin=-1;cmax=1;}
     if(cmin===cmax){cmin-=1;cmax+=1;}
     const cpad=(cmax-cmin)*0.18; const cdmin=cmin-cpad, cdmax=cmax+cpad;
-    const cyOf=(v)=> H-PADB - (v-cdmin)/(cdmax-cdmin)*(H-PADT-PADB);
+    const CH=210,CPADL=12,CPADR=58,CPADT=16,CPADB=16;
+    const cyOf=(v)=> CH-CPADB - (v-cdmin)/(cdmax-cdmin)*(CH-CPADT-CPADB);
     const zeroLineY=+cyOf(0).toFixed(1);
-    const slot=(W-PADL-PADR)/Math.max(m,1);
+    const goalPaceGuide={show:requiredMonthly!=null,y:requiredMonthly!=null?+cyOf(requiredMonthly).toFixed(1):0};
+    const slot=(W-CPADL-CPADR)/Math.max(m,1);
     const bw=Math.min(46, slot*0.5);
     const bars=changes.map((c,i)=>{
-      const cx=PADL + slot*(i+0.5);
+      const cx=CPADL + slot*(i+0.5);
       const y=cyOf(c.val); const top=Math.min(y,zeroLineY); const h=Math.max(Math.abs(y-zeroLineY),2);
-      return {x:+(cx-bw/2).toFixed(1), y:+top.toFixed(1), w:+bw.toFixed(1), h:+h.toFixed(1),
-        fill:c.val>=0?'var(--pos)':'var(--neg)', val:signed(c.val,false), date:c.date,
-        labelX:+cx.toFixed(1), labelY:+(top-6).toFixed(1)};
+      return {key:'pace-'+i,x:+(cx-bw/2).toFixed(1),y:+top.toFixed(1),w:+bw.toFixed(1),h:+h.toFixed(1),
+        fill:c.val>=0?'var(--pos)':'var(--neg)',date:c.date,opacity:hoveredBarIndex==null||hoveredBarIndex===i?1:.42,
+        onEnter:()=>this.hoverBar(i),onLeave:()=>this.clearBar()};
     });
 
     // ---- table ----
@@ -738,7 +766,7 @@ class Component extends DCLogic {
       projLabel, projValueStr, projValueStyle, verdictStr, verdictStyle, tipStr, hasTip:!!tipStr,
       hasEntries:n>0, noEntries:n===0, demoMode:!!this.state.isDemo, hasBars:m>0, noBars:(n>0 && m===0),
       nwLine, nwArea, nwDots, accountLines, totalLegendStyle, chartHoverLabel, hoverGuide,
-      bars, zeroLineY,
+      bars, barColumnCount:Math.max(m,1), zeroLineY, goalPaceGuide, paceHoverLabel, goalPaceStr, paceInsightStr, paceInsightStyle,
       accCols, rows,
       loadDemo:()=>this.loadDemo(), clearDemo:()=>this.clearDemo(), addAccount:()=>this.addAccount(), addPeriod:()=>this.addPeriod(), onImport:(ev)=>this.onImport(ev), onExport:()=>this.onExport(), onReset:()=>this.onReset(),
       periodCountStr: n+' period'+(n===1?'':'s')+' · '+accounts.length+' account'+(accounts.length===1?'':'s')
