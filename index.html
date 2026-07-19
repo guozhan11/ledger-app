@@ -245,8 +245,9 @@
             <tr style="text-align:right;">
               <th style="text-align:left;padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line);white-space:nowrap;">Date</th>
               <sc-for list="{{ accCols }}" as="acc" hint-placeholder-count="4">
-                <th key="{{ acc.key }}" style="padding:8px 6px;border-bottom:1px solid var(--line);">
+                <th key="{{ acc.key }}" data-account-id="{{ acc.key }}" style="{{ acc.headerStyle }}">
                   <div style="display:flex;align-items:center;justify-content:flex-end;gap:2px;">
+                    <span onPointerDown="{{ acc.onPointerDown }}" title="Drag to reorder account" aria-label="Drag {{ acc.name }} to reorder" style="{{ acc.dragHandleStyle }}">⋮⋮</span>
                     <input defaultValue="{{ acc.name }}" onBlur="{{ acc.onRename }}" style="width:74px;text-align:right;border:none;background:transparent;color:var(--muted);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;padding:2px;" style-focus="color:var(--accent)">
                     <button onClick="{{ acc.onRemove }}" title="Remove account" style="border:none;background:transparent;color:var(--line);cursor:pointer;font-size:14px;line-height:1;padding:0 2px;" style-hover="color:var(--neg)">×</button>
                   </div>
@@ -429,6 +430,59 @@ class Component extends DCLogic {
       if(selected.includes(id)) return selected.length>1?{selectedAccountIds:selected.filter(accountId=>accountId!==id)}:{};
       return {selectedAccountIds:[...selected,id]};
     },()=>this.persist());
+  }
+  startAccountDrag(id, ev){
+    if(!ev) return;
+    ev.preventDefault();
+    this.draggingAccountId=id;
+    this.accountDropTargetId=null;
+    this.accountDropAfter=false;
+    this.accountPointerMove=(moveEv)=>this.moveAccountPointer(moveEv);
+    this.accountPointerUp=(upEv)=>this.finishAccountDrag(upEv);
+    document.addEventListener('pointermove',this.accountPointerMove,{passive:false});
+    document.addEventListener('pointerup',this.accountPointerUp);
+    document.addEventListener('pointercancel',this.accountPointerUp);
+    this.setState({dragOverAccountId:null,accountDropAfter:false});
+  }
+  moveAccountPointer(ev){
+    if(!this.draggingAccountId) return;
+    ev.preventDefault();
+    const hit=document.elementFromPoint(ev.clientX,ev.clientY);
+    const cell=hit&&hit.closest?hit.closest('[data-account-id]'):null;
+    const id=cell?cell.getAttribute('data-account-id'):null;
+    if(!id) return;
+    const rect=cell.getBoundingClientRect();
+    const after=ev.clientX>rect.left+rect.width/2;
+    this.accountDropTargetId=id;
+    this.accountDropAfter=after;
+    if(this.state.dragOverAccountId!==id||this.state.accountDropAfter!==after) this.setState({dragOverAccountId:id,accountDropAfter:after});
+  }
+  reorderAccount(sourceId,id,after){
+    if(!sourceId||!id||sourceId===id) return;
+    this.setState(s=>{
+      const accounts=[...s.accounts];
+      const from=accounts.findIndex(a=>a.id===sourceId);
+      if(from<0) return {dragOverAccountId:null,accountDropAfter:false};
+      const moved=accounts.splice(from,1)[0];
+      let to=accounts.findIndex(a=>a.id===id);
+      if(to<0) to=accounts.length;
+      else if(after) to+=1;
+      accounts.splice(to,0,moved);
+      return {accounts,dragOverAccountId:null,accountDropAfter:false};
+    },()=>this.persist());
+  }
+  finishAccountDrag(){
+    const sourceId=this.draggingAccountId;
+    const targetId=this.accountDropTargetId;
+    const after=this.accountDropAfter;
+    if(this.accountPointerMove) document.removeEventListener('pointermove',this.accountPointerMove);
+    if(this.accountPointerUp){ document.removeEventListener('pointerup',this.accountPointerUp); document.removeEventListener('pointercancel',this.accountPointerUp); }
+    this.draggingAccountId=null;
+    this.accountDropTargetId=null;
+    this.accountPointerMove=null;
+    this.accountPointerUp=null;
+    this.reorderAccount(sourceId,targetId,after);
+    this.setState({dragOverAccountId:null,accountDropAfter:false});
   }
   hoverPoint(index){ this.setState({hoveredPoint:index}); }
   clearHover(){ this.setState({hoveredPoint:null}); }
@@ -753,9 +807,10 @@ class Component extends DCLogic {
     const bars=changes.map((c,i)=>{
       const cx=CPADL + slot*(i+0.5);
       const y=cyOf(c.val); const top=Math.min(y,zeroLineY); const h=Math.max(Math.abs(y-zeroLineY),2);
-      const inside=h>=28;
-      const valueY=inside?top+h/2:(c.val>=0?top-10:top+h+10);
-      const valueStyle={display:m<=4||hoveredBarIndex===i?'block':'none',position:'absolute',left:(cx/W*100).toFixed(2)+'%',top:(valueY/CH*100).toFixed(2)+'%',width:(Math.max(slot*.92,90)/W*100).toFixed(2)+'%',transform:'translate(-50%,-50%)',textAlign:'center',fontSize:'9.5px',fontWeight:600,fontVariantNumeric:'tabular-nums',color:inside?'#fff':c.val>=0?'var(--pos)':'var(--neg)',whiteSpace:'nowrap'};
+      // Keep pace values outside the bars. White text inside a narrow bar looks
+      // clipped as soon as the label extends onto the white chart background.
+      const valueY=c.val>=0?top-11:top+h+11;
+      const valueStyle={display:m<=4||hoveredBarIndex===i?'block':'none',position:'absolute',left:(cx/W*100).toFixed(2)+'%',top:(valueY/CH*100).toFixed(2)+'%',transform:'translate(-50%,-50%)',textAlign:'center',fontSize:'9.5px',fontWeight:600,fontVariantNumeric:'tabular-nums',lineHeight:'14px',color:c.val>=0?'var(--pos)':'var(--neg)',background:'var(--surface)',padding:'1px 4px',borderRadius:'4px',whiteSpace:'nowrap',zIndex:2};
       return {key:'pace-'+i,x:+(cx-bw/2).toFixed(1),y:+top.toFixed(1),w:+bw.toFixed(1),h:+h.toFixed(1),
         fill:c.val>=0?'var(--pos)':'var(--neg)',date:c.date,valueLabel:signed(c.val,false)+'/mo',valueStyle,opacity:hoveredBarIndex==null||hoveredBarIndex===i?1:.42,
         onEnter:()=>this.hoverBar(i),onLeave:()=>this.clearBar()};
@@ -776,7 +831,18 @@ class Component extends DCLogic {
       onDelete:()=>this.deleteEntry(e.id)
     }));
 
-    const accCols=accounts.map(a=>({ key:a.id, name:a.name, onRename:(ev)=>this.renameAccount(a.id, ev.target.value), onRemove:()=>this.removeAccount(a.id) }));
+    const accCols=accounts.map(a=>{
+      const dragging=this.draggingAccountId===a.id;
+      const over=this.state.dragOverAccountId===a.id&&this.draggingAccountId!==a.id;
+      const edge=over?(this.state.accountDropAfter?'inset -3px 0 0 var(--accent)':'inset 3px 0 0 var(--accent)'):'none';
+      return {
+        key:a.id,name:a.name,
+        headerStyle:{padding:'8px 6px',borderBottom:'1px solid var(--line)',background:over?'var(--accent-soft)':'transparent',boxShadow:edge,transition:'background .12s,box-shadow .12s'},
+        dragHandleStyle:{display:'inline-flex',alignItems:'center',justifyContent:'center',width:'13px',height:'20px',flex:'0 0 13px',cursor:dragging?'grabbing':'grab',color:dragging?'var(--accent)':'var(--line)',fontSize:'10px',lineHeight:1,letterSpacing:'-3px',userSelect:'none',touchAction:'none',opacity:dragging ? .55 : 1},
+        onPointerDown:(ev)=>this.startAccountDrag(a.id,ev),
+        onRename:(ev)=>this.renameAccount(a.id, ev.target.value),onRemove:()=>this.removeAccount(a.id)
+      };
+    });
 
     return {
       rootRef:this.rootRef,
