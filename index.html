@@ -177,9 +177,9 @@
             </div>
           </div>
           <div>
-            <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">Target month</div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">Target date</div>
             <div style="display:flex;align-items:baseline;gap:6px;">
-              <input key="{{ targetMonthKey }}" type="month" min="{{ minTargetMonth }}" defaultValue="{{ targetMonthDefault }}" onBlur="{{ onTargetMonth }}" style="font-family:'Space Grotesk',sans-serif;font-size:18px;font-weight:600;width:158px;border:none;border-bottom:1.5px solid var(--line);background:transparent;color:var(--ink);padding:4px 2px;font-variant-numeric:tabular-nums;" style-focus="border-bottom-color:var(--accent)">
+              <input key="{{ targetDateKey }}" data-testid="target-date" type="date" min="{{ minTargetDate }}" defaultValue="{{ targetDateDefault }}" onBlur="{{ onTargetDate }}" style="font-family:'Space Grotesk',sans-serif;font-size:18px;font-weight:600;width:168px;border:none;border-bottom:1.5px solid var(--line);background:transparent;color:var(--ink);padding:4px 2px;font-variant-numeric:tabular-nums;" style-focus="border-bottom-color:var(--accent)">
             </div>
           </div>
         </div>
@@ -284,6 +284,18 @@ class Component extends DCLogic {
     return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
   }
 
+  endOfMonth(month){
+    if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month||'')) return null;
+    const parts=month.split('-').map(Number);
+    return this.iso(new Date(parts[0],parts[1],0));
+  }
+
+  validDate(value){
+    if(!/^\d{4}-(0[1-9]|1[0-2])-([0-2]\d|3[01])$/.test(value||'')) return false;
+    const d=new Date(value+'T00:00:00');
+    return !isNaN(d)&&this.iso(d)===value;
+  }
+
   load(){
     try{
       const raw = localStorage.getItem('spendtrack.v1');
@@ -291,11 +303,11 @@ class Component extends DCLogic {
         const d=JSON.parse(raw);
         if(d && d.accounts && d.entries){
           const legacyHorizon=d.horizon!=null?Math.max(1,Math.round(d.horizon)):12;
-          const targetMonth=/^\d{4}-(0[1-9]|1[0-2])$/.test(d.targetMonth||'') ? d.targetMonth : this.monthAfter(legacyHorizon);
+          const targetDate=this.validDate(d.targetDate) ? d.targetDate : this.endOfMonth(/^\d{4}-(0[1-9]|1[0-2])$/.test(d.targetMonth||'')?d.targetMonth:this.monthAfter(legacyHorizon));
           const accountIds=d.accounts.map(a=>a.id);
           const savedIds=Array.isArray(d.selectedAccountIds) ? d.selectedAccountIds.filter(id=>accountIds.includes(id)) : [];
           const selectedAccountIds=savedIds.length?savedIds:accountIds;
-          return {accounts:d.accounts, entries:d.entries, goal:(d.goal!=null?d.goal:100000), targetMonth, isDemo:!!d.isDemo, selectedAccountIds, hoveredPoint:null};
+          return {accounts:d.accounts, entries:d.entries, goal:(d.goal!=null?d.goal:100000), targetDate, isDemo:!!d.isDemo, selectedAccountIds, hoveredPoint:null};
         }
       }
     }catch(e){}
@@ -303,7 +315,7 @@ class Component extends DCLogic {
   }
 
   seed(){
-    return {accounts:[], entries:[], goal:100000, targetMonth:this.monthAfter(12), isDemo:false, selectedAccountIds:[], hoveredPoint:null};
+    return {accounts:[], entries:[], goal:100000, targetDate:this.endOfMonth(this.monthAfter(12)), isDemo:false, selectedAccountIds:[], hoveredPoint:null};
   }
 
   demoState(){
@@ -326,7 +338,7 @@ class Component extends DCLogic {
         row('2026-07-05',6200,24300,30750,-1050,'Demo portfolio')
       ],
       goal:75000,
-      targetMonth:this.monthAfter(12),
+      targetDate:this.endOfMonth(this.monthAfter(12)),
       isDemo:true,
       selectedAccountIds:[checking.id,savings.id,investments.id,card.id],
       hoveredPoint:null
@@ -343,7 +355,7 @@ class Component extends DCLogic {
   }
 
   persist(){
-    try{ localStorage.setItem('spendtrack.v1', JSON.stringify({accounts:this.state.accounts, entries:this.state.entries, goal:this.state.goal, targetMonth:this.state.targetMonth, selectedAccountIds:this.state.selectedAccountIds||[], isDemo:!!this.state.isDemo})); }catch(e){}
+    try{ localStorage.setItem('spendtrack.v1', JSON.stringify({accounts:this.state.accounts, entries:this.state.entries, goal:this.state.goal, targetDate:this.state.targetDate, selectedAccountIds:this.state.selectedAccountIds||[], isDemo:!!this.state.isDemo})); }catch(e){}
   }
 
   evalExpr(str){
@@ -385,7 +397,7 @@ class Component extends DCLogic {
     this.setState(s=>({entries:[...s.entries, {id:this.uid(), date, note:'', balances:{}}]}), ()=>this.persist());
   }
   setGoal(ev){ const v=this.evalExpr(ev.target.value); if(v==null) return; this.setState({goal:v}, ()=>this.persist()); }
-  setTargetMonth(ev){ const v=ev.target.value; if(/^\d{4}-(0[1-9]|1[0-2])$/.test(v)) this.setState({targetMonth:v}, ()=>this.persist()); }
+  setTargetDate(ev){ const v=ev.target.value; if(this.validDate(v)) this.setState({targetDate:v}, ()=>this.persist()); }
   toggleAccount(id){
     this.setState(s=>{
       const selected=s.selectedAccountIds||s.accounts.map(a=>a.id);
@@ -534,7 +546,7 @@ class Component extends DCLogic {
     const signed=(v,cents)=>{ if(v==null||isNaN(v)) return '—'; return (v>=0?'+':'−')+fmt(Math.abs(v),cents); };
     const cStyle=(v)=>({fontFamily:"'Space Grotesk',sans-serif",fontSize:'26px',fontWeight:600,marginTop:'8px',fontVariantNumeric:'tabular-nums',color: v==null?'var(--muted)': v>=0?'var(--pos)':'var(--neg)'});
     const short=(iso)=>{ if(!iso) return ''; const d=new Date(iso+'T00:00:00'); return d.toLocaleDateString('en-US',{month:'short',day:'numeric'}); };
-    const monthYr=(d)=> d.toLocaleDateString('en-US',{month:'short',year:'numeric'});
+    const dayNumber=(iso)=>{ const p=iso.split('-').map(Number); return Date.UTC(p[0],p[1]-1,p[2])/864e5; };
 
     const es=[...this.state.entries].sort((a,b)=> a.date<b.date?-1: a.date>b.date?1:0);
     const totalOf=(e)=> accounts.reduce((s,a)=>{ const v=e.balances[a.id]; return s+(typeof v==='number'&&isFinite(v)?v:0); },0);
@@ -547,7 +559,7 @@ class Component extends DCLogic {
     const lastPct = n>1 ? wt[n-1].changePct : null;
 
     let perDay=null;
-    if(n>1){ const days=(new Date(wt[n-1].date)-new Date(wt[0].date))/864e5; perDay = days>0 ? (wt[n-1].total-wt[0].total)/days : null; }
+    if(n>1){ const days=dayNumber(wt[n-1].date)-dayNumber(wt[0].date); perDay = days>0 ? (wt[n-1].total-wt[0].total)/days : null; }
     const perMonth = perDay!=null ? perDay*30 : null;
 
     // delta chip
@@ -558,29 +570,31 @@ class Component extends DCLogic {
         style:{fontSize:'13px',fontWeight:600,fontVariantNumeric:'tabular-nums',color:lastChange>=0?'var(--pos)':'var(--neg)'}};
     }
 
-    // goal + fixed target-month projection
+    // goal + exact target-date projection, anchored to the latest ledger period
     const goalPct = goal>0 ? Math.max(0,Math.min(100, current/goal*100)) : 0;
-    const targetMonth = this.state.targetMonth || this.monthAfter(12);
-    const targetParts=targetMonth.split('-').map(Number);
-    const now=new Date();
-    const horizon=(targetParts[0]-now.getFullYear())*12+(targetParts[1]-1-now.getMonth());
-    const targetDate=new Date(targetParts[0],targetParts[1]-1,1);
-    const targetLabel=monthYr(targetDate);
-    const requiredMonthly = horizon>0 ? (goal-current)/horizon : null; // net change/mo needed by the fixed target month
+    const targetDateValue=this.state.targetDate||this.endOfMonth(this.monthAfter(12));
+    const targetDate=new Date(targetDateValue+'T00:00:00');
+    const projectionStartDate=n?new Date(wt[n-1].date+'T00:00:00'):new Date(new Date().getFullYear(),new Date().getMonth(),new Date().getDate());
+    const projectionDays=dayNumber(targetDateValue)-dayNumber(this.iso(projectionStartDate));
+    const minDateObject=new Date(projectionStartDate); minDateObject.setDate(minDateObject.getDate()+1);
+    const minTargetDate=this.iso(minDateObject);
+    const targetLabel=targetDate.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+    const startLabel=projectionStartDate.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+    const requiredMonthly=projectionDays>0?(goal-current)/projectionDays*30:null; // monthly-equivalent net change needed by the exact target date
 
     let projLabel = 'Projected by '+targetLabel;
     const projBase={fontFamily:"'Space Grotesk',sans-serif",fontSize:'26px',fontWeight:600,letterSpacing:'-.01em',fontVariantNumeric:'tabular-nums'};
     const verdBase={fontSize:'13px',marginTop:'8px',lineHeight:1.45};
     let projValueStr='—', projValueStyle={...projBase,color:'var(--muted)'};
-    let verdictStr=horizon>0?'Add two or more periods to project a rate.':'Target month has passed. Choose a future month.', verdictStyle={...verdBase,color:'var(--muted)'};
+    let verdictStr=projectionDays>0?'Add two or more periods to project a rate.':'Choose a target date after your latest period ('+startLabel+').', verdictStyle={...verdBase,color:'var(--muted)'};
     let tipStr='';
 
-    if(horizon>0 && n>1 && perMonth!=null){
-      const projected = current + perMonth*horizon;
+    if(projectionDays>0 && n>1 && perDay!=null){
+      const projected = current + perDay*projectionDays;
       projValueStr = fmt(projected,false);
       const onTrack = projected >= goal;
       projValueStyle = {...projBase, color: onTrack ? 'var(--pos)' : 'var(--ink)'};
-      const ceiling = -requiredMonthly; // max monthly spend (net drawdown) that still reaches the goal
+      const ceiling = -requiredMonthly; // monthly-equivalent net drawdown that still reaches the goal
       if(onTrack){
         verdictStr = "You're on track to hit "+fmt(goal,false)+".";
         verdictStyle = {...verdBase, color:'var(--pos)',fontWeight:600};
@@ -720,7 +734,7 @@ class Component extends DCLogic {
       goalPctStr: goalPct.toFixed(0)+'%', goalStr:fmt(goal,false), goalBarWidth:goalPct.toFixed(1)+'%',
       goalBarStyle:{height:'100%',background:'var(--accent)',borderRadius:'6px',transition:'width .4s',width:goalPct.toFixed(1)+'%'},
       goalDefault:''+goal, goalKey:'goal'+goal, onGoal:(ev)=>this.setGoal(ev),
-      targetMonthDefault:targetMonth, targetMonthKey:'target'+targetMonth, minTargetMonth:this.monthAfter(1), onTargetMonth:(ev)=>this.setTargetMonth(ev),
+      targetDateDefault:targetDateValue, targetDateKey:'target'+targetDateValue, minTargetDate, onTargetDate:(ev)=>this.setTargetDate(ev),
       projLabel, projValueStr, projValueStyle, verdictStr, verdictStyle, tipStr, hasTip:!!tipStr,
       hasEntries:n>0, noEntries:n===0, demoMode:!!this.state.isDemo, hasBars:m>0, noBars:(n>0 && m===0),
       nwLine, nwArea, nwDots, accountLines, totalLegendStyle, chartHoverLabel, hoverGuide,
