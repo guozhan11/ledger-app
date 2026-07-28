@@ -304,6 +304,28 @@ class Component extends DCLogic {
 
   uid(){ return 'id' + Math.random().toString(36).slice(2,9) + Date.now().toString(36).slice(-3); }
 
+  // Keep every persisted balance at currency precision. JavaScript stores
+  // decimals in binary, so calculations such as 25099.84 - 18.44 can
+  // otherwise surface as 25081.399999999998 in an editable cell.
+  money(value){
+    if(typeof value!=='number' || !isFinite(value)) return value;
+    const nudge=Number.EPSILON*Math.max(1,Math.abs(value))*Math.sign(value);
+    return Math.round((value+nudge)*100)/100;
+  }
+
+  sumMoney(values){
+    const cents=values.reduce((sum,value)=> sum+(typeof value==='number'&&isFinite(value)?Math.round(this.money(value)*100):0),0);
+    return cents/100;
+  }
+
+  normalizeEntries(entries){
+    return entries.map(entry=>{
+      const balances={...(entry.balances||{})};
+      Object.keys(balances).forEach(id=>{ if(typeof balances[id]==='number'&&isFinite(balances[id])) balances[id]=this.money(balances[id]); });
+      return {...entry,balances};
+    });
+  }
+
   monthAfter(count){
     const now=new Date();
     const d=new Date(now.getFullYear(), now.getMonth()+count, 1);
@@ -333,7 +355,9 @@ class Component extends DCLogic {
           const accountIds=d.accounts.map(a=>a.id);
           const savedIds=Array.isArray(d.selectedAccountIds) ? d.selectedAccountIds.filter(id=>accountIds.includes(id)) : [];
           const selectedAccountIds=savedIds.length?savedIds:accountIds;
-          return {accounts:d.accounts, entries:d.entries, goal:(d.goal!=null?d.goal:100000), targetDate, isDemo:!!d.isDemo, selectedAccountIds, hoveredPoint:null};
+          // Normalize legacy floating-point artifacts in memory. Account,
+          // entry, date, note and selection data are all retained unchanged.
+          return {accounts:d.accounts, entries:this.normalizeEntries(d.entries), goal:this.money(d.goal!=null?d.goal:100000), targetDate, isDemo:!!d.isDemo, selectedAccountIds, hoveredPoint:null};
         }
       }
     }catch(e){}
@@ -388,7 +412,7 @@ class Component extends DCLogic {
     str = ('' + (str==null?'':str)).trim();
     if(str==='') return null;
     if(!/^[-+*/(). \d]+$/.test(str)) return undefined;
-    try{ const v = Function('return (' + str + ')')(); return (typeof v==='number' && isFinite(v)) ? v : undefined; }
+    try{ const v = Function('return (' + str + ')')(); return (typeof v==='number' && isFinite(v)) ? this.money(v) : undefined; }
     catch(e){ return undefined; }
   }
 
@@ -422,7 +446,7 @@ class Component extends DCLogic {
     const date=this.iso(d);
     this.setState(s=>({entries:[...s.entries, {id:this.uid(), date, note:'', balances:{}}]}), ()=>this.persist());
   }
-  setGoal(ev){ const v=this.evalExpr(ev.target.value); if(v==null) return; this.setState({goal:v}, ()=>this.persist()); }
+  setGoal(ev){ const v=this.evalExpr(ev.target.value); if(v==null) return; this.setState({goal:this.money(v)}, ()=>this.persist()); }
   setTargetDate(ev){ const v=ev.target.value; if(this.validDate(v)) this.setState({targetDate:v}, ()=>this.persist()); }
   toggleAccount(id){
     this.setState(s=>{
@@ -495,9 +519,9 @@ class Component extends DCLogic {
     const head=['Date',...A.map(a=>a.name),'Total','Change','Note'];
     const lines=[head.join(',')]; let prev=null;
     es.forEach(e=>{
-      const total=A.reduce((s,a)=>{ const v=e.balances[a.id]; return s+(typeof v==='number'&&isFinite(v)?v:0); },0);
-      const change = prev==null ? '' : (total-prev).toFixed(2); prev=total;
-      const row=[e.date, ...A.map(a=> e.balances[a.id]!=null ? e.balances[a.id] : ''), total.toFixed(2), change, ('"'+(e.note||'').replace(/"/g,'""')+'"')];
+      const total=this.sumMoney(A.map(a=>e.balances[a.id]));
+      const change = prev==null ? '' : this.money(total-prev).toFixed(2); prev=total;
+      const row=[e.date, ...A.map(a=> typeof e.balances[a.id]==='number'&&isFinite(e.balances[a.id]) ? this.money(e.balances[a.id]).toFixed(2) : ''), total.toFixed(2), change, ('"'+(e.note||'').replace(/"/g,'""')+'"')];
       lines.push(row.join(','));
     });
     const blob=new Blob([lines.join('\n')],{type:'text/csv'});
@@ -509,13 +533,13 @@ class Component extends DCLogic {
 
   importNumber(value){
     if(value==null || value==='') return null;
-    if(typeof value==='number') return isFinite(value) ? value : undefined;
+    if(typeof value==='number') return isFinite(value) ? this.money(value) : undefined;
     let s=String(value).trim();
     if(!s) return null;
     const negative=/^\(.*\)$/.test(s);
     s=s.replace(/[,$£€¥\s]/g,'').replace(/^\((.*)\)$/,'$1');
     const v=Number(s);
-    return isFinite(v) ? (negative?-v:v) : undefined;
+    return isFinite(v) ? this.money(negative?-v:v) : undefined;
   }
 
   importDate(value){
@@ -630,9 +654,9 @@ class Component extends DCLogic {
     const dayNumber=(iso)=>{ const p=iso.split('-').map(Number); return Date.UTC(p[0],p[1]-1,p[2])/864e5; };
 
     const es=[...this.state.entries].sort((a,b)=> a.date<b.date?-1: a.date>b.date?1:0);
-    const totalOf=(e)=> accounts.reduce((s,a)=>{ const v=e.balances[a.id]; return s+(typeof v==='number'&&isFinite(v)?v:0); },0);
+    const totalOf=(e)=> this.sumMoney(accounts.map(a=>e.balances[a.id]));
     const wt=es.map(e=>({...e, total:totalOf(e)}));
-    wt.forEach((e,i)=>{ e.change = i>0 ? e.total-wt[i-1].total : null; e.changePct = (i>0 && wt[i-1].total) ? (e.change/wt[i-1].total*100) : null; });
+    wt.forEach((e,i)=>{ e.change = i>0 ? this.money(e.total-wt[i-1].total) : null; e.changePct = (i>0 && wt[i-1].total) ? (e.change/wt[i-1].total*100) : null; });
 
     const n=wt.length;
     const current = n ? wt[n-1].total : 0;
@@ -695,7 +719,7 @@ class Component extends DCLogic {
     const palette=['#b5714a','#6f8f72','#7669a8','#b55b75','#4c8d9b','#98703f'];
     const selectedIds=new Set(this.state.selectedAccountIds||accounts.map(a=>a.id));
     const selectedAccounts=accounts.filter(a=>selectedIds.has(a.id));
-    const chartTotals=wt.map(e=>selectedAccounts.reduce((sum,a)=>{ const v=e.balances[a.id]; return sum+(typeof v==='number'&&isFinite(v)?v:0); },0));
+    const chartTotals=wt.map(e=>this.sumMoney(selectedAccounts.map(a=>e.balances[a.id])));
     const rawAccountSeries=accounts.map((account,i)=>({
       account,
       color:palette[i%palette.length],
@@ -824,7 +848,7 @@ class Component extends DCLogic {
       changeStr: e.change==null ? '—' : signed(e.change, showCents),
       changeStyle:{padding:'6px 10px',borderBottom:'1px solid var(--line)',textAlign:'right',fontWeight:600,fontSize:'13px',whiteSpace:'nowrap',color: e.change==null?'var(--muted)': e.change>=0?'var(--pos)':'var(--neg)'},
       cells: accounts.map(a=>{ const v=e.balances[a.id]; const has=(typeof v==='number'&&isFinite(v));
-        const disp = has ? (showCents ? (''+v) : (''+Math.round(v))) : '';
+        const disp = has ? (showCents ? this.money(v).toFixed(2) : (''+Math.round(v))) : '';
         return {key:a.id+'_'+e.id+'_'+disp, display:disp, onBlur:(ev)=>this.onCellBlur(e.id,a.id,ev)}; }),
       onDate:(ev)=>this.setDate(e.id, ev.target.value),
       onNote:(ev)=>this.setNote(e.id, ev.target.value),
