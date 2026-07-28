@@ -90,8 +90,8 @@
         <div style="{{ perMonthStyle }}" >{{ perMonthStr }}</div>
       </div>
       <div style="background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px 18px;">
-        <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Goal progress</div>
-        <div style="font-family:'Space Grotesk',sans-serif;font-size:26px;font-weight:600;margin-top:8px;font-variant-numeric:tabular-nums;">{{ goalPctStr }}</div>
+        <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Goal outlook</div>
+        <div style="{{ goalOutlookStyle }}">{{ goalOutlookStr }}</div>
       </div>
     </div>
 
@@ -144,7 +144,7 @@
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:6px;">
           <div>
             <div style="font-weight:600;font-size:14px;">Monthly pace</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:3px;">Each period normalized to 30 days</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:3px;">Each bar shows the trailing 30-day change</div>
           </div>
           <div style="text-align:right;">
             <div style="font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums;">{{ paceHoverRange }}</div>
@@ -183,7 +183,7 @@
         <div style="{{ paceInsightStyle }}">{{ paceInsightStr }}</div>
         </sc-if>
         <sc-if value="{{ noBars }}" hint-placeholder-val="{{ false }}">
-          <div style="padding:44px 12px;text-align:center;color:var(--muted);font-size:13px;">Add a second period to see change over time.</div>
+          <div style="padding:44px 12px;text-align:center;color:var(--muted);font-size:13px;">Add periods spanning at least 30 days to see a comparable monthly pace.</div>
         </sc-if>
       </div>
     </div>
@@ -211,7 +211,7 @@
         <div style="height:8px;border-radius:6px;background:var(--accent-soft);margin-top:18px;overflow:hidden;">
           <div style="{{ goalBarStyle }}"></div>
         </div>
-        <div style="font-size:12.5px;color:var(--muted);margin-top:8px;">{{ goalPctStr }} of {{ goalStr }} saved today</div>
+        <div style="font-size:12.5px;color:var(--muted);margin-top:8px;">Current net worth is {{ currentGoalPctStr }} of the {{ goalStr }} target today</div>
       </div>
       <div style="border-left:1px solid var(--line);padding-left:24px;">
         <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">{{ projLabel }}</div>
@@ -219,6 +219,24 @@
         <div style="{{ verdictStyle }}">{{ verdictStr }}</div>
         <sc-if value="{{ hasTip }}" hint-placeholder-val="{{ false }}">
           <div style="font-size:12.5px;color:var(--muted);margin-top:10px;line-height:1.55;padding-top:10px;border-top:1px dashed var(--line);">{{ tipStr }}</div>
+        </sc-if>
+        <sc-if value="{{ hasSpendingPlan }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);">
+            <div style="display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px;">
+              <label style="display:block;">
+                <span style="display:block;font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Monthly rent</span>
+                <span style="display:flex;align-items:center;gap:4px;">
+                  <span style="font-family:'Space Grotesk',sans-serif;font-size:17px;font-weight:600;color:var(--muted);">$</span>
+                  <input key="{{ monthlyRentKey }}" inputmode="decimal" defaultValue="{{ monthlyRentDefault }}" onBlur="{{ onMonthlyRent }}" aria-label="Monthly rent" style="font-family:'Space Grotesk',sans-serif;font-size:17px;font-weight:600;width:105px;border:none;border-bottom:1.5px solid var(--line);background:transparent;color:var(--ink);padding:3px 2px;font-variant-numeric:tabular-nums;" style-focus="border-bottom-color:var(--accent)">
+                </span>
+              </label>
+              <div style="text-align:right;">
+                <div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Weekly non-rent cap</div>
+                <div style="{{ weeklySpendStyle }}">{{ weeklySpendStr }}</div>
+              </div>
+            </div>
+            <div style="{{ spendingPlanNoteStyle }}">{{ spendingPlanNote }}</div>
+          </div>
         </sc-if>
       </div>
     </div>
@@ -357,7 +375,7 @@ class Component extends DCLogic {
           const selectedAccountIds=savedIds.length?savedIds:accountIds;
           // Normalize legacy floating-point artifacts in memory. Account,
           // entry, date, note and selection data are all retained unchanged.
-          return {accounts:d.accounts, entries:this.normalizeEntries(d.entries), goal:this.money(d.goal!=null?d.goal:100000), targetDate, isDemo:!!d.isDemo, selectedAccountIds, hoveredPoint:null};
+          return {accounts:d.accounts, entries:this.normalizeEntries(d.entries), goal:this.money(d.goal!=null?d.goal:100000), monthlyRent:this.money(d.monthlyRent!=null?Math.max(0,d.monthlyRent):0), targetDate, isDemo:!!d.isDemo, selectedAccountIds, hoveredPoint:null};
         }
       }
     }catch(e){}
@@ -365,7 +383,7 @@ class Component extends DCLogic {
   }
 
   seed(){
-    return {accounts:[], entries:[], goal:100000, targetDate:this.endOfMonth(this.monthAfter(12)), isDemo:false, selectedAccountIds:[], hoveredPoint:null};
+    return {accounts:[], entries:[], goal:100000, monthlyRent:0, targetDate:this.endOfMonth(this.monthAfter(12)), isDemo:false, selectedAccountIds:[], hoveredPoint:null};
   }
 
   demoState(){
@@ -388,6 +406,7 @@ class Component extends DCLogic {
         row('2026-07-05',6200,24300,30750,-1050,'Demo portfolio')
       ],
       goal:75000,
+      monthlyRent:0,
       targetDate:this.endOfMonth(this.monthAfter(12)),
       isDemo:true,
       selectedAccountIds:[checking.id,savings.id,investments.id,card.id],
@@ -405,7 +424,7 @@ class Component extends DCLogic {
   }
 
   persist(){
-    try{ localStorage.setItem('spendtrack.v1', JSON.stringify({accounts:this.state.accounts, entries:this.state.entries, goal:this.state.goal, targetDate:this.state.targetDate, selectedAccountIds:this.state.selectedAccountIds||[], isDemo:!!this.state.isDemo})); }catch(e){}
+    try{ localStorage.setItem('spendtrack.v1', JSON.stringify({accounts:this.state.accounts, entries:this.state.entries, goal:this.state.goal, monthlyRent:this.state.monthlyRent||0, targetDate:this.state.targetDate, selectedAccountIds:this.state.selectedAccountIds||[], isDemo:!!this.state.isDemo})); }catch(e){}
   }
 
   evalExpr(str){
@@ -447,6 +466,11 @@ class Component extends DCLogic {
     this.setState(s=>({entries:[...s.entries, {id:this.uid(), date, note:'', balances:{}}]}), ()=>this.persist());
   }
   setGoal(ev){ const v=this.evalExpr(ev.target.value); if(v==null) return; this.setState({goal:this.money(v)}, ()=>this.persist()); }
+  setMonthlyRent(ev){
+    const v=this.evalExpr(ev.target.value);
+    if(v===undefined) return;
+    this.setState({monthlyRent:v==null?0:this.money(Math.max(0,v))},()=>this.persist());
+  }
   setTargetDate(ev){ const v=ev.target.value; if(this.validDate(v)) this.setState({targetDate:v}, ()=>this.persist()); }
   toggleAccount(id){
     this.setState(s=>{
@@ -646,6 +670,7 @@ class Component extends DCLogic {
     const showCents = P.showCents!==false;
     const accounts = this.state.accounts;
     const goal = this.state.goal || 0;
+    const monthlyRent = Math.max(0,this.state.monthlyRent||0);
 
     const fmt=(v,cents)=>{ if(v==null||isNaN(v)) return '—'; return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',minimumFractionDigits:cents?2:0,maximumFractionDigits:cents?2:0}).format(v); };
     const signed=(v,cents)=>{ if(v==null||isNaN(v)) return '—'; return (v>=0?'+':'−')+fmt(Math.abs(v),cents); };
@@ -676,7 +701,8 @@ class Component extends DCLogic {
     }
 
     // goal + exact target-date projection, anchored to the latest ledger period
-    const goalPct = goal>0 ? Math.max(0,Math.min(100, current/goal*100)) : 0;
+    const currentGoalPct = goal>0 ? Math.max(0,current/goal*100) : 0;
+    const goalBarPct = Math.min(100,currentGoalPct);
     const targetDateValue=this.state.targetDate||this.endOfMonth(this.monthAfter(12));
     const targetDate=new Date(targetDateValue+'T00:00:00');
     const projectionStartDate=n?new Date(wt[n-1].date+'T00:00:00'):new Date(new Date().getFullYear(),new Date().getMonth(),new Date().getDate());
@@ -693,13 +719,20 @@ class Component extends DCLogic {
     let projValueStr='—', projValueStyle={...projBase,color:'var(--muted)'};
     let verdictStr=projectionDays>0?'Add two or more periods to project a rate.':'Choose a target date after your latest period ('+startLabel+').', verdictStyle={...verdBase,color:'var(--muted)'};
     let tipStr='';
+    let spendingCeiling=null;
 
+    let goalOutlookStr='Need data';
+    let goalOutlookColor='var(--muted)';
+    if(projectionDays<=0) goalOutlookStr='Check date';
     if(projectionDays>0 && n>1 && perDay!=null){
       const projected = current + perDay*projectionDays;
       projValueStr = fmt(projected,false);
       const onTrack = projected >= goal;
+      goalOutlookStr=onTrack?'On track':'Off track';
+      goalOutlookColor=onTrack?'var(--pos)':'var(--neg)';
       projValueStyle = {...projBase, color: onTrack ? 'var(--pos)' : 'var(--ink)'};
       const ceiling = -requiredMonthly; // monthly-equivalent net drawdown that still reaches the goal
+      if(ceiling>0) spendingCeiling=ceiling;
       if(onTrack){
         verdictStr = "You're on track to hit "+fmt(goal,false)+".";
         verdictStyle = {...verdBase, color:'var(--pos)',fontWeight:600};
@@ -712,6 +745,19 @@ class Component extends DCLogic {
           ? ('Spend under '+fmt(ceiling,false)+' per month to reach '+fmt(goal,false)+' by '+targetLabel+'.')
           : ('Add about '+fmt(requiredMonthly,false)+' per month to reach '+fmt(goal,false)+' by '+targetLabel+'.');
       }
+    }
+
+    const hasSpendingPlan=spendingCeiling!=null;
+    const monthlyNonRent=hasSpendingPlan?Math.max(0,spendingCeiling-monthlyRent):null;
+    const weeklySpend=monthlyNonRent!=null?monthlyNonRent*12/52:null;
+    const rentOverage=hasSpendingPlan?Math.max(0,monthlyRent-spendingCeiling):0;
+    const weeklySpendStr=weeklySpend==null?'—':fmt(weeklySpend,false)+'/week';
+    let spendingPlanNote='Enter your monthly rent to split the monthly spending cap into a weekly non-rent budget.';
+    let spendingPlanNoteColor='var(--muted)';
+    if(hasSpendingPlan&&monthlyRent>0&&rentOverage===0) spendingPlanNote='After '+fmt(monthlyRent,false)+' rent, keep all other spending under '+fmt(weeklySpend,false)+' per week.';
+    if(hasSpendingPlan&&rentOverage>0){
+      spendingPlanNote='Rent alone exceeds the monthly spending cap by '+fmt(rentOverage,false)+'. Reduce fixed costs or increase income to stay on target.';
+      spendingPlanNoteColor='var(--neg)';
     }
 
     // ---- charts ----
@@ -794,24 +840,42 @@ class Component extends DCLogic {
     const chartHoverLabel=hoverEntry?short(hoverEntry.date)+' · '+fmt(hoverTotal,false):'—';
     const hoverGuide={show:hoveredPoint!=null,x:hoveredPoint!=null?+xAt(hoveredPoint).toFixed(1):0};
 
+    // Use equal 30-day windows so bars remain comparable even when ledger
+    // periods are entered at irregular intervals. When there is no snapshot
+    // exactly 30 days earlier, estimate that starting total between the two
+    // surrounding snapshots without changing either saved entry.
+    const rollingDays=30;
     const changes=[];
     for(let i=1;i<wt.length;i++){
-      const days=dayNumber(wt[i].date)-dayNumber(wt[i-1].date);
-      if(days>0) changes.push({val:wt[i].change/days*30,date:short(wt[i].date),range:short(wt[i-1].date)+'–'+short(wt[i].date)});
+      const endDay=dayNumber(wt[i].date);
+      const startDay=endDay-rollingDays;
+      if(startDay<dayNumber(wt[0].date)) continue;
+      let startTotal=null;
+      for(let j=1;j<=i;j++){
+        const leftDay=dayNumber(wt[j-1].date), rightDay=dayNumber(wt[j].date);
+        if(startDay<leftDay||startDay>rightDay||rightDay<=leftDay) continue;
+        const ratio=(startDay-leftDay)/(rightDay-leftDay);
+        startTotal=wt[j-1].total+(wt[j].total-wt[j-1].total)*ratio;
+        break;
+      }
+      if(startTotal==null) continue;
+      const startIso=new Date(startDay*864e5).toISOString().slice(0,10);
+      changes.push({val:this.money(wt[i].total-startTotal),date:short(wt[i].date),range:short(startIso)+'–'+short(wt[i].date)});
     }
     const m=changes.length;
     const hoveredBarIndex=Number.isInteger(this.state.hoveredBarIndex)&&this.state.hoveredBarIndex>=0&&this.state.hoveredBarIndex<m?this.state.hoveredBarIndex:null;
     const hoveredBar=hoveredBarIndex!=null?changes[hoveredBarIndex]:(m?changes[m-1]:null);
     const paceHoverRange=hoveredBar?hoveredBar.range:'—';
-    const paceHoverStatus=hoveredBar?(hoveredBar.val>=0?'Growing ':'Shrinking ')+signed(hoveredBar.val,false)+'/mo':'Add another period';
+    const paceHoverStatus=hoveredBar?(hoveredBar.val>=0?'Growing ':'Shrinking ')+signed(hoveredBar.val,false)+'/mo':'Need 30 days of data';
     const paceHoverStyle={fontSize:'12px',fontWeight:600,marginTop:'2px',fontVariantNumeric:'tabular-nums',color:hoveredBar==null?'var(--muted)':hoveredBar.val>=0?'var(--pos)':'var(--neg)'};
     const goalPaceLabel=requiredMonthly==null?'Set a future target date':requiredMonthly>=0?'Needed growth · '+signed(requiredMonthly,false)+'/mo':'Allowed decline · '+fmt(Math.abs(requiredMonthly),false)+'/mo';
     const goalLineLabelText=requiredMonthly==null?'':requiredMonthly>=0?'Goal · '+signed(requiredMonthly,false)+'/mo':'Limit · −'+fmt(Math.abs(requiredMonthly),false)+'/mo';
-    const paceGap=perMonth!=null&&requiredMonthly!=null?perMonth-requiredMonthly:null;
-    let paceInsightStr='Add two or more periods and a future target date to compare your pace.';
+    const rollingMonth=changes.length?changes[changes.length-1].val:null;
+    const paceGap=rollingMonth!=null&&requiredMonthly!=null?rollingMonth-requiredMonthly:null;
+    let paceInsightStr='Add at least 30 days of periods and a future target date to compare your pace.';
     if(paceGap!=null){
-      if(perMonth<0&&requiredMonthly<0) paceInsightStr=paceGap>=0?'Net worth is shrinking by '+fmt(Math.abs(perMonth),false)+'/mo. Your goal allows up to '+fmt(Math.abs(requiredMonthly),false)+'/mo, leaving a '+fmt(paceGap,false)+'/mo buffer.':'Net worth is shrinking by '+fmt(Math.abs(perMonth),false)+'/mo — '+fmt(Math.abs(paceGap),false)+'/mo faster than your goal allows.';
-      else if(perMonth<0&&requiredMonthly>=0) paceInsightStr='Net worth is shrinking by '+fmt(Math.abs(perMonth),false)+'/mo. Reaching the goal requires '+fmt(requiredMonthly,false)+'/mo of growth — a '+fmt(Math.abs(paceGap),false)+'/mo shortfall.';
+      if(rollingMonth<0&&requiredMonthly<0) paceInsightStr=paceGap>=0?'The 30-day pace is shrinking by '+fmt(Math.abs(rollingMonth),false)+'/mo. Your goal allows up to '+fmt(Math.abs(requiredMonthly),false)+'/mo, leaving a '+fmt(paceGap,false)+'/mo buffer.':'The 30-day pace is shrinking by '+fmt(Math.abs(rollingMonth),false)+'/mo — '+fmt(Math.abs(paceGap),false)+'/mo faster than your goal allows.';
+      else if(rollingMonth<0&&requiredMonthly>=0) paceInsightStr='The 30-day pace is shrinking by '+fmt(Math.abs(rollingMonth),false)+'/mo. Reaching the goal requires '+fmt(requiredMonthly,false)+'/mo of growth — a '+fmt(Math.abs(paceGap),false)+'/mo shortfall.';
       else paceInsightStr=paceGap>=0?'Net worth is growing '+fmt(paceGap,false)+'/mo faster than the goal requires.':'Net worth is growing, but remains '+fmt(Math.abs(paceGap),false)+'/mo behind the goal pace.';
     }
     const paceInsightStyle={fontSize:'11.5px',fontWeight:600,lineHeight:1.45,marginTop:'10px',padding:'8px 10px',borderRadius:'8px',background:'var(--accent-soft)',color:paceGap==null?'var(--muted)':paceGap>=0?'var(--pos)':'var(--neg)'};
@@ -874,9 +938,13 @@ class Component extends DCLogic {
       deltaChip,
       lastChangeStr: lastChange==null?'—':signed(lastChange, showCents), lastChangeStyle:cStyle(lastChange),
       perMonthStr: perMonth==null?'—':signed(perMonth,false), perMonthStyle:cStyle(perMonth),
-      goalPctStr: goalPct.toFixed(0)+'%', goalStr:fmt(goal,false), goalBarWidth:goalPct.toFixed(1)+'%',
-      goalBarStyle:{height:'100%',background:'var(--accent)',borderRadius:'6px',transition:'width .4s',width:goalPct.toFixed(1)+'%'},
+      currentGoalPctStr:currentGoalPct.toFixed(0)+'%', goalStr:fmt(goal,false),
+      goalOutlookStr,goalOutlookStyle:{fontFamily:"'Space Grotesk',sans-serif",fontSize:'26px',fontWeight:600,marginTop:'8px',fontVariantNumeric:'tabular-nums',color:goalOutlookColor},
+      goalBarStyle:{height:'100%',background:'var(--accent)',borderRadius:'6px',transition:'width .4s',width:goalBarPct.toFixed(1)+'%'},
       goalDefault:''+goal, goalKey:'goal'+goal, onGoal:(ev)=>this.setGoal(ev),
+      hasSpendingPlan,monthlyRentDefault:monthlyRent?monthlyRent.toFixed(2):'',monthlyRentKey:'rent'+monthlyRent,onMonthlyRent:(ev)=>this.setMonthlyRent(ev),
+      weeklySpendStr,weeklySpendStyle:{fontFamily:"'Space Grotesk',sans-serif",fontSize:'19px',fontWeight:600,marginTop:'3px',fontVariantNumeric:'tabular-nums',color:rentOverage>0?'var(--neg)':'var(--ink)'},
+      spendingPlanNote,spendingPlanNoteStyle:{fontSize:'11.5px',lineHeight:1.45,marginTop:'10px',paddingTop:'9px',borderTop:'1px dashed var(--line)',color:spendingPlanNoteColor},
       targetDateDefault:targetDateValue, targetDateKey:'target'+targetDateValue, minTargetDate, onTargetDate:(ev)=>this.setTargetDate(ev),
       projLabel, projValueStr, projValueStyle, verdictStr, verdictStyle, tipStr, hasTip:!!tipStr,
       hasEntries:n>0, noEntries:n===0, demoMode:!!this.state.isDemo, hasBars:m>0, noBars:(n>0 && m===0),
