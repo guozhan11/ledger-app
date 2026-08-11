@@ -1,0 +1,22 @@
+{
+  "name": "ledger-app",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build-assets.mjs",
+    "check": "tsc --noEmit && wrangler deploy --dry-run",
+    "dev": "npm run build && wrangler dev",
+    "deploy": "npm run build && wrangler deploy",
+    "db:local": "wrangler d1 migrations apply LEDGER_DB --local",
+    "db:remote": "wrangler d1 migrations apply LEDGER_DB --remote"
+  },
+  "devDependencies": {
+    "@types/node": "^24.2.1",
+    "typescript": "^5.9.2",
+    "wrangler": "^4.120.1"
+  },
+  "dependencies": {
+    "jose": "^6.2.8"
+  }
+}
