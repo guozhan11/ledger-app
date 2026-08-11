@@ -1,0 +1,33 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "ledger-app-sync",
+  "main": "./worker/index.ts",
+  "compatibility_date": "2026-08-11",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "LEDGER_DB",
+      "database_name": "ledger-sync",
+      "database_id": "228abec8-5358-4203-b88a-60b527f44b2e",
+      "migrations_dir": "./migrations"
+    }
+  ],
+  "vars": {
+    "SYNC_ENABLED": "true",
+    "TEAM_DOMAIN": "https://psc-docket-helper.cloudflareaccess.com",
+    "POLICY_AUD": "94d3b357770d4a751126519198aefccfdf3d79987aefeae5667b4a9c99215ddb"
+  },
+  "observability": {
+    "enabled": true,
+    "logs": { "head_sampling_rate": 1 },
+    "traces": { "enabled": true, "head_sampling_rate": 0.05 }
+  }
+}

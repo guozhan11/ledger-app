@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="./support.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script>
+  if('serviceWorker' in navigator){
+    window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(()=>{}));
+  }
+</script>
 </head>
 <body>
 <x-dc>
@@ -54,7 +59,7 @@
         </div>
       </div>
       <div style="max-width:340px;font-size:12.5px;line-height:1.5;color:var(--muted);text-align:right;">
-        Log each account's balance every Sunday — spending is calculated for you. Cells accept math, e.g. <span style="font-family:'Space Grotesk',monospace;color:var(--ink);">223.07+250</span>. Everything saves in your browser.
+        Log each account's balance every Sunday — spending is calculated for you. Cells accept math, e.g. <span style="font-family:'Space Grotesk',monospace;color:var(--ink);">223.07+250</span>. Changes save locally and sync securely across your devices.
       </div>
     </div>
 
@@ -62,7 +67,7 @@
       <div style="background:linear-gradient(135deg,var(--surface),var(--accent-soft));border:1px solid var(--line);border-radius:16px;padding:20px;margin-bottom:14px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px;">
         <div>
           <div style="font-family:'Space Grotesk',sans-serif;font-size:18px;font-weight:600;">See Ledger in action</div>
-          <div style="font-size:12.5px;color:var(--muted);margin-top:5px;line-height:1.5;">Explore a fictional portfolio. Demo data stays in this browser and can be cleared anytime.</div>
+          <div style="font-size:12.5px;color:var(--muted);margin-top:5px;line-height:1.5;">Explore a fictional portfolio. Demo data can be cleared anytime.</div>
         </div>
         <button onClick="{{ loadDemo }}" style="border:none;background:var(--accent);color:#fff;font-family:inherit;font-size:12.5px;font-weight:600;padding:9px 15px;border-radius:10px;cursor:pointer;" style-hover="filter:brightness(1.06)">Load demo data</button>
       </div>
@@ -313,7 +318,9 @@
       </sc-if>
     </div>
 
-    <div style="text-align:center;color:var(--muted);font-size:11.5px;margin-top:18px;">Saved locally in this browser · {{ periodCountStr }}</div>
+    <div style="text-align:center;font-size:11.5px;margin-top:18px;">
+      <span style="{{ syncStatusStyle }}">{{ syncStatusStr }}</span><span style="color:var(--muted);"> · {{ periodCountStr }}</span>
+    </div>
 
   </div>
 </div>
@@ -323,7 +330,9 @@ class Component extends DCLogic {
   constructor(props){
     super(props);
     this.rootRef = React.createRef();
-    this.state = this.load();
+    this.cloudReady = false;
+    this.applyingRemote = false;
+    this.state = {...this.load(), syncStatus:'connecting', syncMessage:'Connecting to cloud sync…'};
   }
 
   uid(){ return 'id' + Math.random().toString(36).slice(2,9) + Date.now().toString(36).slice(-3); }
@@ -373,20 +382,22 @@ class Component extends DCLogic {
       const raw = localStorage.getItem('spendtrack.v1');
       if(raw){
         const d=JSON.parse(raw);
-        if(d && d.accounts && d.entries){
-          const legacyHorizon=d.horizon!=null?Math.max(1,Math.round(d.horizon)):12;
-          const targetDate=this.validDate(d.targetDate) ? d.targetDate : this.endOfMonth(/^\d{4}-(0[1-9]|1[0-2])$/.test(d.targetMonth||'')?d.targetMonth:this.monthAfter(legacyHorizon));
-          const accountIds=d.accounts.map(a=>a.id);
-          const savedIds=Array.isArray(d.selectedAccountIds) ? d.selectedAccountIds.filter(id=>accountIds.includes(id)) : [];
-          const selectedAccountIds=savedIds.length?savedIds:accountIds;
-          // Normalize legacy floating-point artifacts in memory. Account,
-          // entry, date, note and selection data are all retained unchanged.
-          const savedFixedCosts=d.monthlyFixedCosts!=null?d.monthlyFixedCosts:(d.monthlyRent!=null?d.monthlyRent:0);
-          return {accounts:d.accounts, entries:this.normalizeEntries(d.entries), goal:this.money(d.goal!=null?d.goal:100000), monthlyFixedCosts:this.money(Math.max(0,savedFixedCosts)), targetDate, isDemo:!!d.isDemo, selectedAccountIds, hoveredPoint:null};
-        }
+        const saved=this.stateFromData(d);
+        if(saved) return saved;
       }
     }catch(e){}
     return this.seed();
+  }
+
+  stateFromData(d){
+    if(!d || !Array.isArray(d.accounts) || !Array.isArray(d.entries)) return null;
+    const legacyHorizon=d.horizon!=null?Math.max(1,Math.round(d.horizon)):12;
+    const targetDate=this.validDate(d.targetDate) ? d.targetDate : this.endOfMonth(/^\d{4}-(0[1-9]|1[0-2])$/.test(d.targetMonth||'')?d.targetMonth:this.monthAfter(legacyHorizon));
+    const accountIds=d.accounts.map(a=>a.id);
+    const savedIds=Array.isArray(d.selectedAccountIds) ? d.selectedAccountIds.filter(id=>accountIds.includes(id)) : [];
+    const selectedAccountIds=savedIds.length?savedIds:accountIds;
+    const savedFixedCosts=d.monthlyFixedCosts!=null?d.monthlyFixedCosts:(d.monthlyRent!=null?d.monthlyRent:0);
+    return {accounts:d.accounts, entries:this.normalizeEntries(d.entries), goal:this.money(d.goal!=null?d.goal:100000), monthlyFixedCosts:this.money(Math.max(0,savedFixedCosts)), targetDate, isDemo:!!d.isDemo, selectedAccountIds, hoveredPoint:null};
   }
 
   seed(){
@@ -430,8 +441,121 @@ class Component extends DCLogic {
     if(window.confirm('Clear the fictional demo data and return to a blank ledger?')) this.setState(this.seed(),()=>this.persist());
   }
 
+  storageData(state){
+    const source=state||this.state;
+    const fixedCosts=source.monthlyFixedCosts||0;
+    return {accounts:source.accounts, entries:source.entries, goal:source.goal, monthlyFixedCosts:fixedCosts, monthlyRent:fixedCosts, targetDate:source.targetDate, selectedAccountIds:source.selectedAccountIds||[], isDemo:!!source.isDemo};
+  }
+
+  writeLocal(){
+    try{ localStorage.setItem('spendtrack.v1', JSON.stringify(this.storageData())); }catch(e){}
+  }
+
+  getSyncMeta(){
+    try{
+      const meta=JSON.parse(localStorage.getItem('spendtrack.sync.v1')||'null');
+      if(meta && Number.isInteger(meta.version) && meta.version>=0) return meta;
+    }catch(e){}
+    return {version:0,dirty:false};
+  }
+
+  setSyncMeta(meta){
+    try{ localStorage.setItem('spendtrack.sync.v1',JSON.stringify(meta)); }catch(e){}
+  }
+
+  hasMeaningfulData(data){
+    return !!(data.accounts.length || data.entries.length || data.isDemo || data.goal!==100000 || data.monthlyFixedCosts || data.selectedAccountIds.length);
+  }
+
   persist(){
-    try{ const fixedCosts=this.state.monthlyFixedCosts||0; localStorage.setItem('spendtrack.v1', JSON.stringify({accounts:this.state.accounts, entries:this.state.entries, goal:this.state.goal, monthlyFixedCosts:fixedCosts, monthlyRent:fixedCosts, targetDate:this.state.targetDate, selectedAccountIds:this.state.selectedAccountIds||[], isDemo:!!this.state.isDemo})); }catch(e){}
+    this.writeLocal();
+    if(this.applyingRemote || !this.cloudReady) return;
+    const meta=this.getSyncMeta();
+    this.setSyncMeta({...meta,dirty:true});
+    this.setState({syncStatus:'saving',syncMessage:'Saving to cloud…'});
+    if(this.syncTimer) clearTimeout(this.syncTimer);
+    this.syncTimer=setTimeout(()=>this.pushCloud(),700);
+  }
+
+  async cloudRequest(options){
+    const response=await fetch('/api/ledger',{cache:'no-store',...(options||{}),headers:{'Accept':'application/json',...(options&&options.headers?options.headers:{})}});
+    let body=null;
+    try{ body=await response.json(); }catch(e){}
+    return {response,body};
+  }
+
+  async initializeCloudSync(){
+    await this.pullCloud(true);
+    this.syncPoll=setInterval(()=>{ if(!document.hidden && this.cloudReady) this.pullCloud(false); },120000);
+    this.visibilityHandler=()=>{ if(!document.hidden && this.cloudReady) this.pullCloud(false); };
+    document.addEventListener('visibilitychange',this.visibilityHandler);
+    window.addEventListener('focus',this.visibilityHandler);
+  }
+
+  async pullCloud(initial){
+    try{
+      const {response,body}=await this.cloudRequest();
+      if(response.status===503){ this.cloudReady=false; this.setState({syncStatus:'setup',syncMessage:'Cloud sync awaits Access setup'}); return; }
+      if(response.status===401){ this.cloudReady=false; this.setState({syncStatus:'offline',syncMessage:'Sign in to enable cloud sync'}); return; }
+      if(!response.ok || !body) throw new Error((body&&body.error)||'Cloud sync is unavailable.');
+      this.cloudReady=true;
+      const local=this.storageData();
+      const meta=this.getSyncMeta();
+      if(!body.exists){
+        this.setSyncMeta({version:0,dirty:this.hasMeaningfulData(local)});
+        if(this.hasMeaningfulData(local)) await this.pushCloud();
+        else this.setState({syncStatus:'synced',syncMessage:'Cloud sync ready'});
+        return;
+      }
+      const remote=this.stateFromData(body.state);
+      if(!remote) throw new Error('Cloud data is invalid.');
+      const remoteVersion=body.version;
+      const same=JSON.stringify(local)===JSON.stringify(this.storageData(remote));
+      if(meta.dirty){
+        if(meta.version===remoteVersion) await this.pushCloud();
+        return;
+      }
+      if(initial && this.hasMeaningfulData(local) && meta.version===0 && !same){
+        const useCloud=window.confirm('A cloud ledger already exists. Select OK to use the cloud copy, or Cancel to replace it with this device\'s current ledger.');
+        if(!useCloud){ this.setSyncMeta({version:remoteVersion,dirty:true}); await this.pushCloud(); return; }
+      }
+      if(remoteVersion>meta.version || !same) this.applyRemote(remote,remoteVersion);
+      else this.setState({syncStatus:'synced',syncMessage:'Synced securely'});
+    }catch(error){
+      this.setState({syncStatus:'offline',syncMessage:'Saved locally · cloud temporarily unavailable'});
+    }
+  }
+
+  applyRemote(remote,version){
+    this.applyingRemote=true;
+    this.setState({...remote,syncStatus:'synced',syncMessage:'Synced securely'},()=>{
+      this.writeLocal();
+      this.setSyncMeta({version,dirty:false,lastSyncedAt:new Date().toISOString()});
+      this.applyingRemote=false;
+    });
+  }
+
+  async pushCloud(){
+    if(!this.cloudReady) return;
+    if(this.syncTimer){ clearTimeout(this.syncTimer); this.syncTimer=null; }
+    const meta=this.getSyncMeta();
+    const state=this.storageData();
+    try{
+      const {response,body}=await this.cloudRequest({method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({expectedVersion:meta.version,state})});
+      if(response.status===409 && body && body.state){
+        const useCloud=window.confirm('This ledger changed on another device. Select OK to use the newer cloud copy, or Cancel to overwrite it with this device\'s copy.');
+        if(useCloud){ const remote=this.stateFromData(body.state); if(remote) this.applyRemote(remote,body.version); return; }
+        this.setSyncMeta({version:body.version,dirty:true});
+        await this.pushCloud();
+        return;
+      }
+      if(!response.ok || !body) throw new Error((body&&body.error)||'Save failed.');
+      this.setSyncMeta({version:body.version,dirty:false,lastSyncedAt:new Date().toISOString()});
+      this.setState({syncStatus:'synced',syncMessage:'Synced securely'});
+    }catch(error){
+      this.setSyncMeta({...meta,dirty:true});
+      this.setState({syncStatus:'offline',syncMessage:'Saved locally · will retry'});
+    }
   }
 
   evalExpr(str){
@@ -543,7 +667,7 @@ class Component extends DCLogic {
   clearHover(){ this.setState({hoveredPoint:null}); }
   hoverBar(index){ this.setState({hoveredBarIndex:index}); }
   clearBar(){ this.setState({hoveredBarIndex:null}); }
-  onReset(){ if(window.confirm('Reset all local data? This clears your saved accounts and entries.')){ this.setState(this.seed(), ()=>this.persist()); } }
+  onReset(){ if(window.confirm('Reset all synced data? This clears your saved accounts and entries on every device.')){ this.setState(this.seed(), ()=>this.persist()); } }
   onExport(){
     const A=this.state.accounts;
     const es=[...this.state.entries].sort((a,b)=> a.date<b.date?-1:1);
@@ -669,7 +793,12 @@ class Component extends DCLogic {
     return T[name] || T.Slate;
   }
   applyTheme(){ const el=this.rootRef.current; if(!el) return; const t=this.themeVars(this.props.theme); for(const k in t) el.style.setProperty(k,t[k]); }
-  componentDidMount(){ this.applyTheme(); }
+  componentDidMount(){ this.applyTheme(); this.initializeCloudSync(); }
+  componentWillUnmount(){
+    if(this.syncTimer) clearTimeout(this.syncTimer);
+    if(this.syncPoll) clearInterval(this.syncPoll);
+    if(this.visibilityHandler){ document.removeEventListener('visibilitychange',this.visibilityHandler); window.removeEventListener('focus',this.visibilityHandler); }
+  }
   componentDidUpdate(){ this.applyTheme(); }
 
   renderVals(){
@@ -978,6 +1107,8 @@ class Component extends DCLogic {
       bars, barColumnCount:Math.max(m,1), zeroLineY, zeroLabelStyle, goalPaceGuide, goalPaceLabel, goalLineLabelText, goalLineLabelStyle, paceHoverRange, paceHoverStatus, paceHoverStyle, paceInsightStr, paceInsightStyle,
       accCols, rows,
       loadDemo:()=>this.loadDemo(), clearDemo:()=>this.clearDemo(), addAccount:()=>this.addAccount(), addPeriod:()=>this.addPeriod(), onImport:(ev)=>this.onImport(ev), onExport:()=>this.onExport(), onReset:()=>this.onReset(),
+      syncStatusStr:this.state.syncMessage||'Saved locally',
+      syncStatusStyle:{color:this.state.syncStatus==='synced'?'var(--pos)':this.state.syncStatus==='offline'?'var(--neg)':this.state.syncStatus==='setup'?'var(--accent)':'var(--muted)',fontWeight:500},
       periodCountStr: n+' period'+(n===1?'':'s')+' · '+accounts.length+' account'+(accounts.length===1?'':'s')
     };
   }
