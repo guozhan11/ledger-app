@@ -12,7 +12,8 @@ Try the public demo: [guozhan11.github.io/ledger-app](https://guozhan11.github.i
 - Import CSV or Excel files and export CSV backups
 - Set savings goals, target dates, and monthly fixed costs
 - Install as a PWA on desktop or mobile
-- Keep working from the local browser cache when cloud sync is unavailable
+- Keep working from the local browser cache when cloud sync is unavailable; the
+  core React runtime is bundled with the app instead of loaded from a CDN
 - Synchronize an authenticated user's ledger across devices with Cloudflare
 
 ## Public demo and private sync
@@ -92,3 +93,11 @@ npm run check
 ```
 
 This runs the TypeScript check and a Wrangler deployment dry run.
+
+## Installed app updates
+
+The PWA checks for a new service worker whenever it opens. A newly deployed app
+shell replaces the old cache and reloads once automatically. If an older iOS
+home-screen installation ever remains stuck on a stale version, close it from
+the app switcher and reopen it; removing and adding the home-screen icon again
+is only a last resort and does not delete the cloud copy of the ledger.

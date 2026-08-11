@@ -3,11 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<style>x-dc{display:none!important}</style>
+<script src="./app/vendor/react.production.min.js"></script>
+<script src="./app/vendor/react-dom.production.min.js"></script>
 <script src="./support.js"></script>
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script async src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script>
   if('serviceWorker' in navigator){
-    window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(()=>{}));
+    let refreshing=false;
+    navigator.serviceWorker.addEventListener('controllerchange',()=>{
+      if(refreshing) return;
+      refreshing=true;
+      window.location.reload();
+    });
+    window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').then((registration)=>registration.update()).catch(()=>{}));
   }
 </script>
 </head>

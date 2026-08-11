@@ -1,8 +1,26 @@
-const CACHE_NAME='ledger-shell-v1';
-const APP_SHELL=['./','./index.html','./support.js','./app/manifest.webmanifest','./app/icon-192.png','./app/icon-512.png'];
+const CACHE_NAME='ledger-shell-v2';
+const BASE_URL=new URL('./',self.location.href);
+const INDEX_URL=new URL('index.html',BASE_URL).href;
+const APP_SHELL=[
+  INDEX_URL,
+  new URL('support.js',BASE_URL).href,
+  new URL('app/vendor/react.production.min.js',BASE_URL).href,
+  new URL('app/vendor/react-dom.production.min.js',BASE_URL).href,
+  new URL('app/manifest.webmanifest',BASE_URL).href,
+  new URL('app/icon-180.png',BASE_URL).href,
+  new URL('app/icon-192.png',BASE_URL).href,
+  new URL('app/icon-512.png',BASE_URL).href,
+];
+
+function isCacheable(response){
+  if(!response || !response.ok || response.type!=='basic') return false;
+  try{ return new URL(response.url).origin===self.location.origin; }
+  catch{ return false; }
+}
 
 self.addEventListener('install',(event)=>{
-  event.waitUntil(caches.open(CACHE_NAME).then((cache)=>cache.addAll(APP_SHELL)).then(()=>self.skipWaiting()));
+  const requests=APP_SHELL.map((url)=>new Request(url,{cache:'reload'}));
+  event.waitUntil(caches.open(CACHE_NAME).then((cache)=>cache.addAll(requests)).then(()=>self.skipWaiting()));
 });
 
 self.addEventListener('activate',(event)=>{
@@ -15,14 +33,16 @@ self.addEventListener('fetch',(event)=>{
   if(request.method!=='GET' || url.origin!==self.location.origin || url.pathname.startsWith('/api/')) return;
   if(request.mode==='navigate'){
     event.respondWith(fetch(request).then((response)=>{
-      const copy=response.clone();
-      event.waitUntil(caches.open(CACHE_NAME).then((cache)=>cache.put('./index.html',copy)));
+      if(isCacheable(response) && response.headers.get('Content-Type')?.includes('text/html')){
+        const copy=response.clone();
+        event.waitUntil(caches.open(CACHE_NAME).then((cache)=>cache.put(INDEX_URL,copy)));
+      }
       return response;
-    }).catch(()=>caches.match('./index.html')));
+    }).catch(async()=>await caches.match(INDEX_URL)||new Response('Ledger is offline. Reconnect once to finish loading the app.',{status:503,headers:{'Content-Type':'text/plain; charset=utf-8'}})));
     return;
   }
   event.respondWith(caches.match(request).then((cached)=>cached||fetch(request).then((response)=>{
-    if(response.ok){
+    if(isCacheable(response)){
       const copy=response.clone();
       event.waitUntil(caches.open(CACHE_NAME).then((cache)=>cache.put(request,copy)));
     }
