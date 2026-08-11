@@ -1,4 +1,4 @@
-const CACHE_NAME='ledger-shell-v6';
+const CACHE_NAME='ledger-shell-v7';
 const BASE_URL=new URL('./',self.location.href);
 const INDEX_URL=new URL('index.html',BASE_URL).href;
 const APP_SHELL=[

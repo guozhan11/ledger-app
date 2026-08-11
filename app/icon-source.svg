@@ -2,25 +2,10 @@
   <rect width="1024" height="1024" fill="#ffffff"/>
   <defs>
     <clipPath id="ledger-lines-clip">
-      <text
-        x="512"
-        y="796"
-        font-family="Didot, Bodoni 72, serif"
-        font-size="820"
-        font-weight="700"
-        text-anchor="middle"
-      >L</text>
+      <path d="M253.7 212.16V223.64H329.14V784.52H253.7V796H773.58V610.68H762.92Q752.26 658.24 732.99 691.45Q713.72 724.66 689.53 745.57Q665.34 766.48 637.87 775.5Q610.4 784.52 583.34 784.52H448.04V223.64H523.48V212.16Z"/>
     </clipPath>
   </defs>
-  <text
-    x="512"
-    y="796"
-    fill="#0b2341"
-    font-family="Didot, Bodoni 72, serif"
-    font-size="820"
-    font-weight="700"
-    text-anchor="middle"
-  >L</text>
+  <path fill="#0b2341" d="M253.7 212.16V223.64H329.14V784.52H253.7V796H773.58V610.68H762.92Q752.26 658.24 732.99 691.45Q713.72 724.66 689.53 745.57Q665.34 766.48 637.87 775.5Q610.4 784.52 583.34 784.52H448.04V223.64H523.48V212.16Z"/>
   <g clip-path="url(#ledger-lines-clip)" stroke="#ffffff" stroke-width="20">
     <path d="M316 384H504"/>
     <path d="M316 476H504"/>
