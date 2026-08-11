@@ -1,12 +1,29 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <rect width="1024" height="1024" fill="#ffffff"/>
+  <defs>
+    <clipPath id="ledger-lines-clip">
+      <text
+        x="512"
+        y="796"
+        font-family="Didot, Bodoni 72, serif"
+        font-size="820"
+        font-weight="700"
+        text-anchor="middle"
+      >L</text>
+    </clipPath>
+  </defs>
   <text
     x="512"
-    y="800"
+    y="796"
     fill="#0b2341"
     font-family="Didot, Bodoni 72, serif"
     font-size="820"
     font-weight="700"
     text-anchor="middle"
   >L</text>
+  <g clip-path="url(#ledger-lines-clip)" stroke="#ffffff" stroke-width="20">
+    <path d="M316 384H504"/>
+    <path d="M316 476H504"/>
+    <path d="M316 568H504"/>
+  </g>
 </svg>
