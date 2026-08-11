@@ -96,8 +96,10 @@ This runs the TypeScript check and a Wrangler deployment dry run.
 
 ## Installed app updates
 
-The PWA checks for a new service worker whenever it opens. A newly deployed app
-shell replaces the old cache and reloads once automatically. If an older iOS
+The PWA checks for a new service worker whenever it opens. The Cloudflare build
+inlines the core runtime into its HTML so an authenticated home-screen launch
+does not depend on separate script requests. A newly deployed app shell replaces
+the old cache and reloads once automatically. If an older iOS
 home-screen installation ever remains stuck on a stale version, close it from
 the app switcher and reopen it; removing and adding the home-screen icon again
 is only a last resort and does not delete the cloud copy of the ledger.

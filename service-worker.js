@@ -1,11 +1,8 @@
-const CACHE_NAME='ledger-shell-v2';
+const CACHE_NAME='ledger-shell-v3';
 const BASE_URL=new URL('./',self.location.href);
 const INDEX_URL=new URL('index.html',BASE_URL).href;
 const APP_SHELL=[
   INDEX_URL,
-  new URL('support.js',BASE_URL).href,
-  new URL('app/vendor/react.production.min.js',BASE_URL).href,
-  new URL('app/vendor/react-dom.production.min.js',BASE_URL).href,
   new URL('app/manifest.webmanifest',BASE_URL).href,
   new URL('app/icon-180.png',BASE_URL).href,
   new URL('app/icon-192.png',BASE_URL).href,
@@ -20,7 +17,10 @@ function isCacheable(response){
 
 self.addEventListener('install',(event)=>{
   const requests=APP_SHELL.map((url)=>new Request(url,{cache:'reload'}));
-  event.waitUntil(caches.open(CACHE_NAME).then((cache)=>cache.addAll(requests)).then(()=>self.skipWaiting()));
+  event.waitUntil(caches.open(CACHE_NAME).then((cache)=>Promise.allSettled(requests.map(async(request)=>{
+    const response=await fetch(request);
+    if(isCacheable(response)) await cache.put(request,response);
+  }))).then(()=>self.skipWaiting()));
 });
 
 self.addEventListener('activate',(event)=>{
