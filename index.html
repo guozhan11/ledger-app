@@ -232,7 +232,7 @@
         <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">{{ projLabel }}</div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
           <span style="font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Based on</span>
-          <div role="group" aria-label="What the projection extrapolates" style="display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;">
+          <div role="group" aria-label="What the projection extrapolates" style="display:flex;flex-wrap:wrap;gap:6px;">
             <sc-for list="{{ basisOptions }}" as="opt" hint-placeholder-count="2">
               <button key="{{ opt.key }}" onClick="{{ opt.onSelect }}" title="{{ opt.title }}" aria-pressed="{{ opt.pressed }}" style="{{ opt.buttonStyle }}">{{ opt.label }}</button>
             </sc-for>
@@ -323,7 +323,7 @@
                   <input inputmode="text" aria-label="Excluded adjustment for {{ row.date }}" title="May be positive or negative" placeholder="±0" defaultValue="{{ row.adjustmentDisplay }}" onBlur="{{ row.onAdjustment }}" style="width:92px;text-align:right;border:none;background:transparent;color:var(--muted);font-size:13px;padding:6px 8px;border-radius:6px;" style-focus="background:var(--accent-soft);color:var(--ink)">
                 </td>
                 <td style="padding:4px 2px;border-bottom:1px solid var(--line);">
-                  <input inputmode="decimal" aria-label="Income record for {{ row.date }}" title="Positive amounts only; subtracted from Consumption" placeholder="0" defaultValue="{{ row.incomeDisplay }}" onBlur="{{ row.onIncome }}" style="width:92px;text-align:right;border:none;background:transparent;color:var(--pos);font-size:13px;padding:6px 8px;border-radius:6px;" style-focus="background:var(--accent-soft);color:var(--pos)">
+                  <input inputmode="decimal" aria-label="Income record for {{ row.date }}" title="Positive amounts only; subtracted from Consumption" placeholder="0" defaultValue="{{ row.incomeDisplay }}" onBlur="{{ row.onIncome }}" style="width:92px;text-align:right;border:none;background:transparent;color:var(--pos);font-size:13px;font-weight:600;padding:6px 8px;border-radius:6px;" style-focus="background:var(--accent-soft);color:var(--pos)">
                 </td>
                 <td style="{{ row.changeStyle }}" >{{ row.changeStr }}</td>
                 <td style="border-bottom:1px solid var(--line);text-align:center;">
@@ -428,8 +428,10 @@ class Component extends DCLogic {
     return {accounts:[], entries:[], goal:100000, monthlyFixedCosts:0, targetDate:this.endOfMonth(this.monthAfter(12)), isDemo:false, selectedAccountIds:[], projectionBasis:'spending', hoveredPoint:null};
   }
 
-  // What the projection extrapolates: spending alone, or spending with income counted.
-  normalizeProjectionBasis(value){ return value==='spending-income' ? 'spending-income' : 'spending'; }
+  // What the projection extrapolates: spending alone, plus income, or plus excluded adjustments too.
+  normalizeProjectionBasis(value){
+    return value==='spending-income'||value==='spending-income-excluded' ? value : 'spending';
+  }
 
   demoState(){
     const checking={id:this.uid(),name:'Checking'};
@@ -868,7 +870,8 @@ class Component extends DCLogic {
     const goal = this.state.goal || 0;
     const monthlyFixedCosts = Math.max(0,this.state.monthlyFixedCosts||0);
     const projectionBasis = this.normalizeProjectionBasis(this.state.projectionBasis);
-    const countsIncome = projectionBasis==='spending-income';
+    const countsExcluded = projectionBasis==='spending-income-excluded';
+    const countsIncome = countsExcluded || projectionBasis==='spending-income';
 
     const fmt=(v,cents)=>{ if(v==null||isNaN(v)) return '—'; return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',minimumFractionDigits:cents?2:0,maximumFractionDigits:cents?2:0}).format(v); };
     const signed=(v,cents)=>{ if(v==null||isNaN(v)) return '—'; return (v>=0?'+':'−')+fmt(Math.abs(v),cents); };
@@ -896,10 +899,18 @@ class Component extends DCLogic {
     const lastChange = n>1 ? wt[n-1].rawChange : null;
     const lastPct = n>1 ? wt[n-1].rawChangePct : null;
 
-    const ratePerDay=(key)=>{ if(n<=1) return null; const days=dayNumber(wt[n-1].date)-dayNumber(wt[0].date); return days>0 ? (wt[n-1][key]-wt[0][key])/days : null; };
-    const perDay = ratePerDay('trendTotal');                                  // spending-only, drives the pace chart and Avg / month
+    // Every rate is a daily average over the logged span, so a single entry is never repeated per period.
+    const spanDays = n>1 ? dayNumber(wt[n-1].date)-dayNumber(wt[0].date) : 0;
+    const ratePerDay=(key)=> (n>1 && spanDays>0) ? (wt[n-1][key]-wt[0][key])/spanDays : null;
+    const perDay = ratePerDay('trendTotal');            // spending-only: pace chart and Average consumption per month
     const perMonth = perDay!=null ? perDay*30 : null;
-    const projPerDay = countsIncome ? ratePerDay('netTrendTotal') : perDay;   // what the projection extrapolates
+    // 'total' is the untouched balance, so its rate already carries income and excluded alike.
+    const projPerDay = ratePerDay(countsExcluded ? 'total' : countsIncome ? 'netTrendTotal' : 'trendTotal');
+
+    const sumFrom=(pick)=> wt.slice(1).reduce((s,e)=>s+pick(e),0);
+    const avgMonth=(amount)=> spanDays>0 ? amount/spanDays*30 : null;
+    const incomePerMonth = n>1 ? avgMonth(sumFrom(e=>e.income)) : null;
+    const excludedPerMonth = n>1 ? avgMonth(sumFrom(e=>e.trendAdjustment)) : null;
 
     // delta chip
     let deltaChip={show:false,text:'',style:{}};
@@ -1150,19 +1161,26 @@ class Component extends DCLogic {
     }));
 
     const basisOptions=[
-      {id:'spending',label:'Spending',hint:'Extrapolate spending alone, as if no further income arrives.'},
-      {id:'spending-income',label:'Spending + Income',hint:'Extrapolate spending and income together, assuming income keeps coming in.'}
+      {id:'spending',label:'Spending',hint:'Extrapolate consumption alone, as if no further income arrives.'},
+      {id:'spending-income',label:'Spending + Income',hint:'Add your average income, but keep one-off Excluded adjustments out.'},
+      {id:'spending-income-excluded',label:'Spending + Income + Excluded',hint:'Extrapolate the raw net worth movement, one-off adjustments included.'}
     ].map(o=>{
       const selected=o.id===projectionBasis;
       return {
         key:o.id, label:o.label, title:o.hint, pressed:selected?'true':'false',
         onSelect:()=>this.setProjectionBasis(o.id),
-        buttonStyle:{border:'none',background:selected?'var(--accent)':'transparent',color:selected?'#fff':'var(--muted)',fontFamily:'inherit',fontSize:'11.5px',fontWeight:selected?600:500,padding:'5px 10px',cursor:'pointer',whiteSpace:'nowrap',transition:'background .15s,color .15s'}
+        buttonStyle:{border:'1px solid '+(selected?'var(--accent)':'var(--line)'),background:selected?'var(--accent)':'transparent',color:selected?'#fff':'var(--muted)',fontFamily:'inherit',fontSize:'11.5px',fontWeight:selected?600:500,padding:'5px 10px',borderRadius:'8px',cursor:'pointer',whiteSpace:'nowrap',transition:'background .15s,color .15s,border-color .15s'}
       };
     });
-    const basisNote=countsIncome
-      ? 'Income is counted, so the projection assumes your income keeps arriving at the same pace.'
-      : 'Income is left out, so the projection shows where spending alone takes you.';
+    // Rates are daily averages over the logged span, so spell that out rather than let "pace" imply a repeat.
+    const perMonthPhrase=(v)=> v==null ? null : (v>=0?'+':'−')+fmt(Math.abs(v),false)+'/mo';
+    const incomePhrase=incomePerMonth?' ('+perMonthPhrase(incomePerMonth)+' averaged over your logged history)':'';
+    const excludedPhrase=excludedPerMonth?' ('+perMonthPhrase(excludedPerMonth)+' averaged)':'';
+    const basisNote=countsExcluded
+      ? 'Income'+incomePhrase+' and Excluded'+excludedPhrase+' are both counted, so this extrapolates your raw net worth movement.'
+      : countsIncome
+        ? 'Income'+incomePhrase+' is counted; one-off Excluded adjustments stay out.'
+        : 'Income and Excluded are both left out, so this shows where consumption alone takes you.';
 
     const accCols=accounts.map(a=>{
       const dragging=this.draggingAccountId===a.id;
@@ -1182,7 +1200,8 @@ class Component extends DCLogic {
       netWorthStr:fmt(current,false),
       deltaChip,
       lastChangeStr: lastChange==null?'—':signed(lastChange, showCents), lastChangeStyle:cStyle(lastChange),
-      perMonthStr: perMonth==null?'—':signed(perMonth,false), perMonthStyle:cStyle(perMonth),
+      // Shown as consumption, so the usual negative trend reads as a positive amount spent.
+      perMonthStr: perMonth==null?'—':(perMonth>0?'−'+fmt(perMonth,false):fmt(Math.abs(perMonth),false)), perMonthStyle:cStyle(perMonth),
       currentGoalPctStr:currentGoalPct.toFixed(0)+'%', goalStr:fmt(goal,false),
       goalOutlookStr,goalOutlookStyle:{fontFamily:"'Space Grotesk',sans-serif",fontSize:'26px',fontWeight:600,marginTop:'8px',fontVariantNumeric:'tabular-nums',color:goalOutlookColor},
       goalBarStyle:{height:'100%',background:'var(--accent)',borderRadius:'6px',transition:'width .4s',width:goalBarPct.toFixed(1)+'%'},
