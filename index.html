@@ -294,7 +294,7 @@
               <th style="padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line);white-space:nowrap;">Total</th>
               <th title="One-time adjustment excluded from spending. May be positive or negative." style="padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line);white-space:nowrap;">Excluded</th>
               <th title="Positive-only record that does not affect any calculation." style="padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line);white-space:nowrap;">Income</th>
-              <th style="padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line);white-space:nowrap;">Spending</th>
+              <th style="padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line);white-space:nowrap;">Consumption</th>
               <th style="text-align:left;padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line);">Note</th>
               <th style="border-bottom:1px solid var(--line);width:28px;"></th>
             </tr>
@@ -705,7 +705,7 @@ class Component extends DCLogic {
   onExport(){
     const A=this.state.accounts;
     const es=[...this.state.entries].sort((a,b)=> a.date<b.date?-1:1);
-    const head=['Date',...A.map(a=>a.name),'Total','Excluded','Income','Spending','Note'];
+    const head=['Date',...A.map(a=>a.name),'Total','Excluded','Income','Consumption','Note'];
     const lines=[head.join(',')]; let prev=null;
     es.forEach(e=>{
       const total=this.sumMoney(A.map(a=>e.balances[a.id]));
@@ -773,7 +773,7 @@ class Component extends DCLogic {
       const adjustmentCol=keys.findIndex(k=>adjustmentNames.includes(k));
       const incomeNames=['income','income record','收入'];
       const incomeCol=keys.findIndex(k=>incomeNames.includes(k));
-      const ignored=['','total','sum','change','net worth','networth','spending'];
+      const ignored=['','total','sum','change','net worth','networth','spending','consumption'];
       const accountCols=headers.map((name,i)=>({name,i,key:keys[i]})).filter(c=>c.i!==dateCol && c.i!==noteCol && c.i!==adjustmentCol && c.i!==incomeCol && !ignored.includes(c.key));
       if(!accountCols.length) throw new Error('No account columns were found. Put each account in its own column after Date.');
 
