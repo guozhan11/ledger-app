@@ -5,6 +5,8 @@ period-to-period changes, savings goals, and spending trends.
 
 Try the public demo: [guozhan11.github.io/ledger-app](https://guozhan11.github.io/ledger-app/)
 
+![Weekly Ledger dashboard populated with fictional demo data](docs/images/weekly-ledger-demo.jpg)
+
 ## Features
 
 - Track multiple accounts and periodic balances
