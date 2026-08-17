@@ -68,7 +68,7 @@
         </div>
       </div>
       <div style="max-width:340px;font-size:12.5px;line-height:1.5;color:var(--muted);text-align:right;">
-        Log each account's balance every Sunday — spending is calculated for you. Use Excluded for positive or negative one-time adjustments. {{ headerNote }} Switch between Spending and Net above the table. Cells accept math, e.g. <span style="font-family:'Space Grotesk',monospace;color:var(--ink);">223.07+250</span>.
+        Log each account's balance every Sunday — spending is calculated for you. Use Excluded for positive or negative one-time adjustments. Income is positive-only and is subtracted from Consumption, so raises don't read as savings — choose whether the projection counts it. Cells accept math, e.g. <span style="font-family:'Space Grotesk',monospace;color:var(--ink);">223.07+250</span>.
       </div>
     </div>
 
@@ -158,7 +158,7 @@
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:6px;">
           <div>
             <div style="font-weight:600;font-size:14px;">Monthly pace</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:3px;">{{ paceSubtitle }}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:3px;">Each bar shows the trailing 30-day spending</div>
           </div>
           <div style="text-align:right;">
             <div style="font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums;">{{ paceHoverRange }}</div>
@@ -230,8 +230,17 @@
         </div>
         <div style="border-left:1px solid var(--line);padding-left:24px;">
         <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">{{ projLabel }}</div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+          <span style="font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Based on</span>
+          <div role="group" aria-label="What the projection extrapolates" style="display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;">
+            <sc-for list="{{ basisOptions }}" as="opt" hint-placeholder-count="2">
+              <button key="{{ opt.key }}" onClick="{{ opt.onSelect }}" title="{{ opt.title }}" aria-pressed="{{ opt.pressed }}" style="{{ opt.buttonStyle }}">{{ opt.label }}</button>
+            </sc-for>
+          </div>
+        </div>
         <div style="{{ projValueStyle }}">{{ projValueStr }}</div>
         <div style="{{ verdictStyle }}">{{ verdictStr }}</div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:6px;line-height:1.45;">{{ basisNote }}</div>
         <sc-if value="{{ hasTip }}" hint-placeholder-val="{{ false }}">
           <div style="font-size:12.5px;color:var(--muted);margin-top:10px;line-height:1.55;padding-top:10px;border-top:1px dashed var(--line);">{{ tipStr }}</div>
         </sc-if>
@@ -264,16 +273,8 @@
     <!-- Table -->
     <div style="background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px;">
       <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;">
-        <div>
-          <div style="font-weight:600;font-size:14px;">Periods</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:3px;">{{ viewModeNote }}</div>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-          <div role="group" aria-label="How periods are calculated" style="display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;">
-            <sc-for list="{{ viewModeOptions }}" as="opt" hint-placeholder-count="2">
-              <button key="{{ opt.key }}" onClick="{{ opt.onSelect }}" title="{{ opt.title }}" aria-pressed="{{ opt.pressed }}" style="{{ opt.buttonStyle }}">{{ opt.label }}</button>
-            </sc-for>
-          </div>
+        <div style="font-weight:600;font-size:14px;">Periods</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button onClick="{{ addAccount }}" style="border:1px solid var(--line);background:var(--surface);color:var(--ink);font-family:inherit;font-size:12.5px;font-weight:500;padding:7px 12px;border-radius:9px;cursor:pointer;" style-hover="border-color:var(--accent);color:var(--accent)">+ Account</button>
           <label style="position:relative;overflow:hidden;display:inline-flex;align-items:center;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-family:inherit;font-size:12.5px;font-weight:500;padding:7px 12px;border-radius:9px;cursor:pointer;">
             Import CSV / Excel
@@ -301,8 +302,8 @@
               </sc-for>
               <th style="padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line);white-space:nowrap;">Total</th>
               <th title="One-time adjustment excluded from spending. May be positive or negative." style="padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line);white-space:nowrap;">Excluded</th>
-              <th title="{{ incomeHint }}" style="padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line);white-space:nowrap;">Income</th>
-              <th style="padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line);white-space:nowrap;">{{ changeLabel }}</th>
+              <th title="Positive-only; subtracted when calculating Consumption." style="padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line);white-space:nowrap;">Income</th>
+              <th style="padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line);white-space:nowrap;">Consumption</th>
               <th style="border-bottom:1px solid var(--line);width:28px;"></th>
             </tr>
           </thead>
@@ -420,15 +421,15 @@ class Component extends DCLogic {
     const savedIds=Array.isArray(d.selectedAccountIds) ? d.selectedAccountIds.filter(id=>accountIds.includes(id)) : [];
     const selectedAccountIds=savedIds.length?savedIds:accountIds;
     const savedFixedCosts=d.monthlyFixedCosts!=null?d.monthlyFixedCosts:(d.monthlyRent!=null?d.monthlyRent:0);
-    return {accounts:d.accounts, entries:this.normalizeEntries(d.entries), goal:this.money(d.goal!=null?d.goal:100000), monthlyFixedCosts:this.money(Math.max(0,savedFixedCosts)), targetDate, isDemo:!!d.isDemo, selectedAccountIds, viewMode:this.normalizeViewMode(d.viewMode), hoveredPoint:null};
+    return {accounts:d.accounts, entries:this.normalizeEntries(d.entries), goal:this.money(d.goal!=null?d.goal:100000), monthlyFixedCosts:this.money(Math.max(0,savedFixedCosts)), targetDate, isDemo:!!d.isDemo, selectedAccountIds, projectionBasis:this.normalizeProjectionBasis(d.projectionBasis), hoveredPoint:null};
   }
 
   seed(){
-    return {accounts:[], entries:[], goal:100000, monthlyFixedCosts:0, targetDate:this.endOfMonth(this.monthAfter(12)), isDemo:false, selectedAccountIds:[], viewMode:'spending', hoveredPoint:null};
+    return {accounts:[], entries:[], goal:100000, monthlyFixedCosts:0, targetDate:this.endOfMonth(this.monthAfter(12)), isDemo:false, selectedAccountIds:[], projectionBasis:'spending', hoveredPoint:null};
   }
 
-  // 'spending' backs income out of the period change; 'net' leaves it in.
-  normalizeViewMode(value){ return value==='net' ? 'net' : 'spending'; }
+  // What the projection extrapolates: spending alone, or spending with income counted.
+  normalizeProjectionBasis(value){ return value==='spending-income' ? 'spending-income' : 'spending'; }
 
   demoState(){
     const checking={id:this.uid(),name:'Checking'};
@@ -454,24 +455,24 @@ class Component extends DCLogic {
       targetDate:this.endOfMonth(this.monthAfter(12)),
       isDemo:true,
       selectedAccountIds:[checking.id,savings.id,investments.id,card.id],
-      viewMode:'spending',
+      projectionBasis:'spending',
       hoveredPoint:null
     };
   }
 
   loadDemo(){
     if(this.state.entries.length && !window.confirm('Replace the current local data with fictional demo data?')) return;
-    this.setState({...this.demoState(),viewMode:this.state.viewMode},()=>this.persist());
+    this.setState({...this.demoState(),projectionBasis:this.state.projectionBasis},()=>this.persist());
   }
 
   clearDemo(){
-    if(window.confirm('Clear the fictional demo data and return to a blank ledger?')) this.setState({...this.seed(),viewMode:this.state.viewMode},()=>this.persist());
+    if(window.confirm('Clear the fictional demo data and return to a blank ledger?')) this.setState({...this.seed(),projectionBasis:this.state.projectionBasis},()=>this.persist());
   }
 
   storageData(state){
     const source=state||this.state;
     const fixedCosts=source.monthlyFixedCosts||0;
-    return {accounts:source.accounts, entries:source.entries, goal:source.goal, monthlyFixedCosts:fixedCosts, monthlyRent:fixedCosts, targetDate:source.targetDate, selectedAccountIds:source.selectedAccountIds||[], viewMode:this.normalizeViewMode(source.viewMode), isDemo:!!source.isDemo};
+    return {accounts:source.accounts, entries:source.entries, goal:source.goal, monthlyFixedCosts:fixedCosts, monthlyRent:fixedCosts, targetDate:source.targetDate, selectedAccountIds:source.selectedAccountIds||[], projectionBasis:this.normalizeProjectionBasis(source.projectionBasis), isDemo:!!source.isDemo};
   }
 
   writeLocal(){
@@ -645,10 +646,10 @@ class Component extends DCLogic {
     this.setState({monthlyFixedCosts:v==null?0:this.money(Math.max(0,v))},()=>this.persist());
   }
   setTargetDate(ev){ const v=ev.target.value; if(this.validDate(v)) this.setState({targetDate:v}, ()=>this.persist()); }
-  setViewMode(mode){
-    const next=this.normalizeViewMode(mode);
-    if(next===this.normalizeViewMode(this.state.viewMode)) return;
-    this.setState({viewMode:next}, ()=>this.persist());
+  setProjectionBasis(mode){
+    const next=this.normalizeProjectionBasis(mode);
+    if(next===this.normalizeProjectionBasis(this.state.projectionBasis)) return;
+    this.setState({projectionBasis:next}, ()=>this.persist());
   }
   toggleAccount(id){
     this.setState(s=>{
@@ -718,14 +719,13 @@ class Component extends DCLogic {
   onExport(){
     const A=this.state.accounts;
     const es=[...this.state.entries].sort((a,b)=> a.date<b.date?-1:1);
-    const netMode=this.normalizeViewMode(this.state.viewMode)==='net';
-    const head=['Date',...A.map(a=>a.name),'Total','Excluded','Income',netMode?'Net change':'Consumption'];
+    const head=['Date',...A.map(a=>a.name),'Total','Excluded','Income','Consumption'];
     const lines=[head.join(',')]; let prev=null;
     es.forEach(e=>{
       const total=this.sumMoney(A.map(a=>e.balances[a.id]));
       const adjustment=typeof e.trendAdjustment==='number'&&isFinite(e.trendAdjustment)?this.money(e.trendAdjustment):0;
       const income=typeof e.income==='number'&&isFinite(e.income)?this.money(Math.max(0,e.income)):0;
-      const change = prev==null ? '' : this.money(total-prev-adjustment-(netMode?0:income)).toFixed(2); prev=total;
+      const change = prev==null ? '' : this.money(total-prev-adjustment-income).toFixed(2); prev=total;
       const row=[e.date, ...A.map(a=> typeof e.balances[a.id]==='number'&&isFinite(e.balances[a.id]) ? this.money(e.balances[a.id]).toFixed(2) : ''), total.toFixed(2), adjustment?adjustment.toFixed(2):'', income?income.toFixed(2):'', change];
       lines.push(row.join(','));
     });
@@ -867,14 +867,8 @@ class Component extends DCLogic {
     const accounts = this.state.accounts;
     const goal = this.state.goal || 0;
     const monthlyFixedCosts = Math.max(0,this.state.monthlyFixedCosts||0);
-    const viewMode = this.normalizeViewMode(this.state.viewMode);
-    const netMode = viewMode==='net';
-    const changeLabel = netMode ? 'Net change' : 'Consumption';
-    const incomeHint = netMode ? 'Positive-only; counted in Net change.' : 'Positive-only; subtracted when calculating Consumption.';
-    const paceSubtitle = netMode ? 'Each bar shows the trailing 30-day net change' : 'Each bar shows the trailing 30-day spending';
-    const headerNote = netMode
-      ? 'Income counts toward the period, so a raise shows up as net worth growth.'
-      : 'Income is subtracted from Consumption, so raises don’t read as savings.';
+    const projectionBasis = this.normalizeProjectionBasis(this.state.projectionBasis);
+    const countsIncome = projectionBasis==='spending-income';
 
     const fmt=(v,cents)=>{ if(v==null||isNaN(v)) return '—'; return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',minimumFractionDigits:cents?2:0,maximumFractionDigits:cents?2:0}).format(v); };
     const signed=(v,cents)=>{ if(v==null||isNaN(v)) return '—'; return (v>=0?'+':'−')+fmt(Math.abs(v),cents); };
@@ -888,8 +882,10 @@ class Component extends DCLogic {
     wt.forEach((e,i)=>{
       e.trendAdjustment=typeof e.trendAdjustment==='number'&&isFinite(e.trendAdjustment)?this.money(e.trendAdjustment):0;
       e.income=typeof e.income==='number'&&isFinite(e.income)?this.money(Math.max(0,e.income)):0;
-      e.change=i>0?this.money(e.total-wt[i-1].total-e.trendAdjustment-(netMode?0:e.income)):null;
+      // change/trendTotal are always spending-only; netTrendTotal keeps income in for the projection basis.
+      e.change=i>0?this.money(e.total-wt[i-1].total-e.trendAdjustment-e.income):null;
       e.trendTotal=i>0?this.money(wt[i-1].trendTotal+e.change):e.total;
+      e.netTrendTotal=i>0?this.money(wt[i-1].netTrendTotal+e.change+e.income):e.total;
       e.changePct=(i>0&&wt[i-1].total)?(e.change/wt[i-1].total*100):null;
     });
 
@@ -898,9 +894,10 @@ class Component extends DCLogic {
     const lastChange = n>1 ? wt[n-1].change : null;
     const lastPct = n>1 ? wt[n-1].changePct : null;
 
-    let perDay=null;
-    if(n>1){ const days=dayNumber(wt[n-1].date)-dayNumber(wt[0].date); perDay = days>0 ? (wt[n-1].trendTotal-wt[0].trendTotal)/days : null; }
+    const ratePerDay=(key)=>{ if(n<=1) return null; const days=dayNumber(wt[n-1].date)-dayNumber(wt[0].date); return days>0 ? (wt[n-1][key]-wt[0][key])/days : null; };
+    const perDay = ratePerDay('trendTotal');                                  // spending-only, drives the pace chart and Avg / month
     const perMonth = perDay!=null ? perDay*30 : null;
+    const projPerDay = countsIncome ? ratePerDay('netTrendTotal') : perDay;   // what the projection extrapolates
 
     // delta chip
     let deltaChip={show:false,text:'',style:{}};
@@ -935,8 +932,8 @@ class Component extends DCLogic {
     let goalOutlookColor='var(--muted)';
     let goalOnTrack=null;
     if(projectionDays<=0) goalOutlookStr='Check date';
-    if(projectionDays>0 && n>1 && perDay!=null){
-      const projected = current + perDay*projectionDays;
+    if(projectionDays>0 && n>1 && projPerDay!=null){
+      const projected = current + projPerDay*projectionDays;
       projValueStr = fmt(projected,false);
       const onTrack = projected >= goal;
       goalOnTrack=onTrack;
@@ -1150,20 +1147,20 @@ class Component extends DCLogic {
       onDelete:()=>this.deleteEntry(e.id)
     }));
 
-    const viewModeOptions=[
-      {id:'spending',label:'Spending',hint:'Income is subtracted, so the column shows what you consumed.'},
-      {id:'net',label:'Net',hint:'Income is counted, so the column shows net worth change.'}
+    const basisOptions=[
+      {id:'spending',label:'Spending',hint:'Extrapolate spending alone, as if no further income arrives.'},
+      {id:'spending-income',label:'Spending + Income',hint:'Extrapolate spending and income together, assuming income keeps coming in.'}
     ].map(o=>{
-      const selected=o.id===viewMode;
+      const selected=o.id===projectionBasis;
       return {
         key:o.id, label:o.label, title:o.hint, pressed:selected?'true':'false',
-        onSelect:()=>this.setViewMode(o.id),
-        buttonStyle:{border:'none',background:selected?'var(--accent)':'transparent',color:selected?'#fff':'var(--muted)',fontFamily:'inherit',fontSize:'12px',fontWeight:selected?600:500,padding:'6px 11px',cursor:'pointer',transition:'background .15s,color .15s'}
+        onSelect:()=>this.setProjectionBasis(o.id),
+        buttonStyle:{border:'none',background:selected?'var(--accent)':'transparent',color:selected?'#fff':'var(--muted)',fontFamily:'inherit',fontSize:'11.5px',fontWeight:selected?600:500,padding:'5px 10px',cursor:'pointer',whiteSpace:'nowrap',transition:'background .15s,color .15s'}
       };
     });
-    const viewModeNote=netMode
-      ? 'Net change — income counts toward the period, so this tracks net worth movement.'
-      : 'Consumption — income is backed out, so this tracks spending alone.';
+    const basisNote=countsIncome
+      ? 'Income is counted, so the projection assumes your income keeps arriving at the same pace.'
+      : 'Income is left out, so the projection shows where spending alone takes you.';
 
     const accCols=accounts.map(a=>{
       const dragging=this.draggingAccountId===a.id;
@@ -1198,7 +1195,7 @@ class Component extends DCLogic {
       nwLine, nwArea, nwDots, accountLines, totalLegendStyle, chartHoverLabel, hoverGuide,
       bars, barColumnCount:Math.max(m,1), zeroLineY, zeroLabelStyle, goalPaceGuide, goalPaceLabel, goalLineLabelText, goalLineLabelStyle, paceHoverRange, paceHoverStatus, paceHoverStyle, paceInsightStr, paceInsightStyle,
       accCols, rows,
-      viewModeOptions, viewModeNote, changeLabel, incomeHint, paceSubtitle, headerNote,
+      basisOptions, basisNote,
       loadDemo:()=>this.loadDemo(), clearDemo:()=>this.clearDemo(), addAccount:()=>this.addAccount(), addPeriod:()=>this.addPeriod(), onImport:(ev)=>this.onImport(ev), onExport:()=>this.onExport(), onReset:()=>this.onReset(),
       syncStatusStr:this.state.syncMessage||'Saved locally',
       syncStatusStyle:{color:this.state.syncStatus==='synced'?'var(--pos)':this.state.syncStatus==='offline'?'var(--neg)':this.state.syncStatus==='setup'?'var(--accent)':'var(--muted)',fontWeight:500},
