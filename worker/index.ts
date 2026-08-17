@@ -15,6 +15,7 @@ type LedgerState = {
   monthlyRent?: unknown;
   targetDate?: unknown;
   selectedAccountIds?: unknown[];
+  viewMode?: unknown;
   isDemo?: unknown;
 };
 
