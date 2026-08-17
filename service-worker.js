@@ -1,4 +1,4 @@
-const CACHE_NAME='ledger-shell-v10';
+const CACHE_NAME='ledger-shell-v11';
 const BASE_URL=new URL('./',self.location.href);
 const INDEX_URL=new URL('index.html',BASE_URL).href;
 const APP_SHELL=[
@@ -32,7 +32,7 @@ self.addEventListener('fetch',(event)=>{
   const url=new URL(request.url);
   if(request.method!=='GET' || url.origin!==self.location.origin || url.pathname.startsWith('/api/')) return;
   if(request.mode==='navigate'){
-    event.respondWith(fetch(request).then((response)=>{
+    event.respondWith(fetch(new Request(request,{cache:'reload'})).then((response)=>{
       if(isCacheable(response) && response.headers.get('Content-Type')?.includes('text/html')){
         const copy=response.clone();
         event.waitUntil(caches.open(CACHE_NAME).then((cache)=>cache.put(INDEX_URL,copy)));

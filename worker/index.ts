@@ -152,7 +152,8 @@ function secureAssetResponse(response: Response): Response {
   headers.set("X-Frame-Options", "DENY");
   headers.set("Referrer-Policy", "no-referrer");
   headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
-  if (headers.get("Content-Type")?.includes("text/html") || headers.get("Content-Type")?.includes("javascript")) headers.set("Cache-Control", "no-cache");
+  if (headers.get("Content-Type")?.includes("text/html")) headers.set("Cache-Control", "no-store");
+  else if (headers.get("Content-Type")?.includes("javascript")) headers.set("Cache-Control", "no-cache");
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
