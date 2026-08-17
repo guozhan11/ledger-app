@@ -421,16 +421,21 @@ class Component extends DCLogic {
     const savedIds=Array.isArray(d.selectedAccountIds) ? d.selectedAccountIds.filter(id=>accountIds.includes(id)) : [];
     const selectedAccountIds=savedIds.length?savedIds:accountIds;
     const savedFixedCosts=d.monthlyFixedCosts!=null?d.monthlyFixedCosts:(d.monthlyRent!=null?d.monthlyRent:0);
-    return {accounts:d.accounts, entries:this.normalizeEntries(d.entries), goal:this.money(d.goal!=null?d.goal:100000), monthlyFixedCosts:this.money(Math.max(0,savedFixedCosts)), targetDate, isDemo:!!d.isDemo, selectedAccountIds, projectionBasis:this.normalizeProjectionBasis(d.projectionBasis), hoveredPoint:null};
+    return {accounts:d.accounts, entries:this.normalizeEntries(d.entries), goal:this.money(d.goal!=null?d.goal:100000), monthlyFixedCosts:this.money(Math.max(0,savedFixedCosts)), targetDate, isDemo:!!d.isDemo, selectedAccountIds, projectionParts:this.normalizeProjectionParts(d.projectionParts!==undefined?d.projectionParts:d.projectionBasis), hoveredPoint:null};
   }
 
   seed(){
-    return {accounts:[], entries:[], goal:100000, monthlyFixedCosts:0, targetDate:this.endOfMonth(this.monthAfter(12)), isDemo:false, selectedAccountIds:[], projectionBasis:'spending', hoveredPoint:null};
+    return {accounts:[], entries:[], goal:100000, monthlyFixedCosts:0, targetDate:this.endOfMonth(this.monthAfter(12)), isDemo:false, selectedAccountIds:[], projectionParts:['spending'], hoveredPoint:null};
   }
 
-  // What the projection extrapolates: spending alone, plus income, or plus excluded adjustments too.
-  normalizeProjectionBasis(value){
-    return value==='spending-income'||value==='spending-income-excluded' ? value : 'spending';
+  // Which parts of each period the projection extrapolates. Any combination is valid, including none.
+  projectionPartIds(){ return ['spending','income','excluded']; }
+  normalizeProjectionParts(value){
+    const ids=this.projectionPartIds();
+    if(Array.isArray(value)) return ids.filter(id=>value.includes(id));
+    // Legacy single-choice values, kept so an existing pick survives the upgrade.
+    const legacy={'spending':['spending'],'spending-income':['spending','income'],'spending-income-excluded':ids};
+    return legacy[value] || ['spending'];
   }
 
   demoState(){
@@ -457,24 +462,24 @@ class Component extends DCLogic {
       targetDate:this.endOfMonth(this.monthAfter(12)),
       isDemo:true,
       selectedAccountIds:[checking.id,savings.id,investments.id,card.id],
-      projectionBasis:'spending',
+      projectionParts:['spending'],
       hoveredPoint:null
     };
   }
 
   loadDemo(){
     if(this.state.entries.length && !window.confirm('Replace the current local data with fictional demo data?')) return;
-    this.setState({...this.demoState(),projectionBasis:this.state.projectionBasis},()=>this.persist());
+    this.setState({...this.demoState(),projectionParts:this.state.projectionParts},()=>this.persist());
   }
 
   clearDemo(){
-    if(window.confirm('Clear the fictional demo data and return to a blank ledger?')) this.setState({...this.seed(),projectionBasis:this.state.projectionBasis},()=>this.persist());
+    if(window.confirm('Clear the fictional demo data and return to a blank ledger?')) this.setState({...this.seed(),projectionParts:this.state.projectionParts},()=>this.persist());
   }
 
   storageData(state){
     const source=state||this.state;
     const fixedCosts=source.monthlyFixedCosts||0;
-    return {accounts:source.accounts, entries:source.entries, goal:source.goal, monthlyFixedCosts:fixedCosts, monthlyRent:fixedCosts, targetDate:source.targetDate, selectedAccountIds:source.selectedAccountIds||[], projectionBasis:this.normalizeProjectionBasis(source.projectionBasis), isDemo:!!source.isDemo};
+    return {accounts:source.accounts, entries:source.entries, goal:source.goal, monthlyFixedCosts:fixedCosts, monthlyRent:fixedCosts, targetDate:source.targetDate, selectedAccountIds:source.selectedAccountIds||[], projectionParts:this.normalizeProjectionParts(source.projectionParts), isDemo:!!source.isDemo};
   }
 
   writeLocal(){
@@ -648,10 +653,13 @@ class Component extends DCLogic {
     this.setState({monthlyFixedCosts:v==null?0:this.money(Math.max(0,v))},()=>this.persist());
   }
   setTargetDate(ev){ const v=ev.target.value; if(this.validDate(v)) this.setState({targetDate:v}, ()=>this.persist()); }
-  setProjectionBasis(mode){
-    const next=this.normalizeProjectionBasis(mode);
-    if(next===this.normalizeProjectionBasis(this.state.projectionBasis)) return;
-    this.setState({projectionBasis:next}, ()=>this.persist());
+  toggleProjectionPart(id){
+    if(!this.projectionPartIds().includes(id)) return;
+    this.setState(s=>{
+      const current=this.normalizeProjectionParts(s.projectionParts);
+      const next=current.includes(id)?current.filter(x=>x!==id):[...current,id];
+      return {projectionParts:this.normalizeProjectionParts(next)};
+    }, ()=>this.persist());
   }
   toggleAccount(id){
     this.setState(s=>{
@@ -869,9 +877,7 @@ class Component extends DCLogic {
     const accounts = this.state.accounts;
     const goal = this.state.goal || 0;
     const monthlyFixedCosts = Math.max(0,this.state.monthlyFixedCosts||0);
-    const projectionBasis = this.normalizeProjectionBasis(this.state.projectionBasis);
-    const countsExcluded = projectionBasis==='spending-income-excluded';
-    const countsIncome = countsExcluded || projectionBasis==='spending-income';
+    const projectionParts = this.normalizeProjectionParts(this.state.projectionParts);
 
     const fmt=(v,cents)=>{ if(v==null||isNaN(v)) return '—'; return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',minimumFractionDigits:cents?2:0,maximumFractionDigits:cents?2:0}).format(v); };
     const signed=(v,cents)=>{ if(v==null||isNaN(v)) return '—'; return (v>=0?'+':'−')+fmt(Math.abs(v),cents); };
@@ -885,10 +891,9 @@ class Component extends DCLogic {
     wt.forEach((e,i)=>{
       e.trendAdjustment=typeof e.trendAdjustment==='number'&&isFinite(e.trendAdjustment)?this.money(e.trendAdjustment):0;
       e.income=typeof e.income==='number'&&isFinite(e.income)?this.money(Math.max(0,e.income)):0;
-      // change/trendTotal are always spending-only; netTrendTotal keeps income in for the projection basis.
+      // Each period splits exactly: total move = change (consumption) + income + excluded.
       e.change=i>0?this.money(e.total-wt[i-1].total-e.trendAdjustment-e.income):null;
       e.trendTotal=i>0?this.money(wt[i-1].trendTotal+e.change):e.total;
-      e.netTrendTotal=i>0?this.money(wt[i-1].netTrendTotal+e.change+e.income):e.total;
       // rawChange is the plain period-over-period move, with excluded and income left in.
       e.rawChange=i>0?this.money(e.total-wt[i-1].total):null;
       e.rawChangePct=(i>0&&wt[i-1].total)?(e.rawChange/wt[i-1].total*100):null;
@@ -904,13 +909,12 @@ class Component extends DCLogic {
     const ratePerDay=(key)=> (n>1 && spanDays>0) ? (wt[n-1][key]-wt[0][key])/spanDays : null;
     const perDay = ratePerDay('trendTotal');            // spending-only: pace chart and Average consumption per month
     const perMonth = perDay!=null ? perDay*30 : null;
-    // 'total' is the untouched balance, so its rate already carries income and excluded alike.
-    const projPerDay = ratePerDay(countsExcluded ? 'total' : countsIncome ? 'netTrendTotal' : 'trendTotal');
-
+    // Sum only the parts the user ticked; an empty pick holds the balance flat.
     const sumFrom=(pick)=> wt.slice(1).reduce((s,e)=>s+pick(e),0);
+    const partTotals={spending:sumFrom(e=>e.change), income:sumFrom(e=>e.income), excluded:sumFrom(e=>e.trendAdjustment)};
+    const selectedTotal=projectionParts.reduce((s,id)=>s+(partTotals[id]||0),0);
+    const projPerDay = (n>1 && spanDays>0) ? selectedTotal/spanDays : null;
     const avgMonth=(amount)=> spanDays>0 ? amount/spanDays*30 : null;
-    const incomePerMonth = n>1 ? avgMonth(sumFrom(e=>e.income)) : null;
-    const excludedPerMonth = n>1 ? avgMonth(sumFrom(e=>e.trendAdjustment)) : null;
 
     // delta chip
     let deltaChip={show:false,text:'',style:{}};
@@ -1160,27 +1164,32 @@ class Component extends DCLogic {
       onDelete:()=>this.deleteEntry(e.id)
     }));
 
-    const basisOptions=[
-      {id:'spending',label:'Spending',hint:'Extrapolate consumption alone, as if no further income arrives.'},
-      {id:'spending-income',label:'Spending + Income',hint:'Add your average income, but keep one-off Excluded adjustments out.'},
-      {id:'spending-income-excluded',label:'Spending + Income + Excluded',hint:'Extrapolate the raw net worth movement, one-off adjustments included.'}
-    ].map(o=>{
-      const selected=o.id===projectionBasis;
+    const partLabels={spending:'Spending',income:'Income',excluded:'Excluded'};
+    const partHints={
+      spending:'Your consumption — the Consumption column, with Income and Excluded already removed.',
+      income:'The Income you logged, averaged across your history rather than repeated per period.',
+      excluded:'One-off adjustments from the Excluded column, averaged the same way.'
+    };
+    const basisOptions=this.projectionPartIds().map(id=>{
+      const selected=projectionParts.includes(id);
       return {
-        key:o.id, label:o.label, title:o.hint, pressed:selected?'true':'false',
-        onSelect:()=>this.setProjectionBasis(o.id),
-        buttonStyle:{border:'1px solid '+(selected?'var(--accent)':'var(--line)'),background:selected?'var(--accent)':'transparent',color:selected?'#fff':'var(--muted)',fontFamily:'inherit',fontSize:'11.5px',fontWeight:selected?600:500,padding:'5px 10px',borderRadius:'8px',cursor:'pointer',whiteSpace:'nowrap',transition:'background .15s,color .15s,border-color .15s'}
+        key:id, label:partLabels[id], title:partHints[id], pressed:selected?'true':'false',
+        onSelect:()=>this.toggleProjectionPart(id),
+        buttonStyle:{border:'1px solid '+(selected?'var(--accent)':'var(--line)'),background:selected?'var(--accent)':'transparent',color:selected?'#fff':'var(--muted)',fontFamily:'inherit',fontSize:'11.5px',fontWeight:selected?600:500,padding:'5px 13px',borderRadius:'999px',cursor:'pointer',whiteSpace:'nowrap',transition:'background .15s,color .15s,border-color .15s'}
       };
     });
-    // Rates are daily averages over the logged span, so spell that out rather than let "pace" imply a repeat.
-    const perMonthPhrase=(v)=> v==null ? null : (v>=0?'+':'−')+fmt(Math.abs(v),false)+'/mo';
-    const incomePhrase=incomePerMonth?' ('+perMonthPhrase(incomePerMonth)+' averaged over your logged history)':'';
-    const excludedPhrase=excludedPerMonth?' ('+perMonthPhrase(excludedPerMonth)+' averaged)':'';
-    const basisNote=countsExcluded
-      ? 'Income'+incomePhrase+' and Excluded'+excludedPhrase+' are both counted, so this extrapolates your raw net worth movement.'
-      : countsIncome
-        ? 'Income'+incomePhrase+' is counted; one-off Excluded adjustments stay out.'
-        : 'Income and Excluded are both left out, so this shows where consumption alone takes you.';
+    // Name the averaged rate behind each part, so "counted" never reads as "repeated every period".
+    const perMonthPhrase=(v)=> (v>=0?'+':'−')+fmt(Math.abs(v),false)+'/mo';
+    const partPhrase=(id)=>{
+      const avg=n>1?avgMonth(partTotals[id]):null;
+      return partLabels[id]+(avg==null?'':' ('+perMonthPhrase(avg)+')');
+    };
+    const omitted=this.projectionPartIds().filter(id=>!projectionParts.includes(id));
+    const listOf=(ids)=>ids.map(partPhrase).join(', ').replace(/, ([^,]*)$/, ids.length>2?', and $1':' and $1');
+    const basisNote=projectionParts.length===0
+      ? 'Nothing selected, so the projection holds your balance flat at today’s total.'
+      : 'Counting '+listOf(projectionParts)+(omitted.length?'; leaving out '+listOf(omitted):'')
+        +(spanDays>0?'. Each is a daily average over your '+spanDays+' logged days, then carried forward.':'.');
 
     const accCols=accounts.map(a=>{
       const dragging=this.draggingAccountId===a.id;
