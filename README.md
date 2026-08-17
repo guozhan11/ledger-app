@@ -11,7 +11,7 @@ Try the public demo: [guozhan11.github.io/ledger-app](https://guozhan11.github.i
 
 - Track multiple accounts and periodic balances
 - Calculate net worth and trend-adjusted changes automatically
-- Record positive income separately and exclude positive or negative one-time adjustments from spending trends without changing the real account total
+- Record positive income so it is netted out of consumption, and exclude positive or negative one-time adjustments from spending trends without changing the real account total
 - Import CSV or Excel files and export CSV backups
 - Set savings goals, target dates, and monthly fixed costs
 - Install as a PWA on desktop or mobile

@@ -68,7 +68,7 @@
         </div>
       </div>
       <div style="max-width:340px;font-size:12.5px;line-height:1.5;color:var(--muted);text-align:right;">
-        Log each account's balance every Sunday — spending is calculated for you. Use Excluded for positive or negative one-time adjustments. Income is a positive-only note for your own records and does not affect any calculation. Cells accept math, e.g. <span style="font-family:'Space Grotesk',monospace;color:var(--ink);">223.07+250</span>.
+        Log each account's balance every Sunday — spending is calculated for you. Use Excluded for positive or negative one-time adjustments. Income is positive-only and is subtracted from Consumption, so raises don't read as savings. Cells accept math, e.g. <span style="font-family:'Space Grotesk',monospace;color:var(--ink);">223.07+250</span>.
       </div>
     </div>
 
@@ -293,7 +293,7 @@
               </sc-for>
               <th style="padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line);white-space:nowrap;">Total</th>
               <th title="One-time adjustment excluded from spending. May be positive or negative." style="padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line);white-space:nowrap;">Excluded</th>
-              <th title="Positive-only record that does not affect any calculation." style="padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line);white-space:nowrap;">Income</th>
+              <th title="Positive-only; subtracted when calculating Consumption." style="padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line);white-space:nowrap;">Income</th>
               <th style="padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line);white-space:nowrap;">Consumption</th>
               <th style="border-bottom:1px solid var(--line);width:28px;"></th>
             </tr>
@@ -314,7 +314,7 @@
                   <input inputmode="text" aria-label="Excluded adjustment for {{ row.date }}" title="May be positive or negative" placeholder="±0" defaultValue="{{ row.adjustmentDisplay }}" onBlur="{{ row.onAdjustment }}" style="width:92px;text-align:right;border:none;background:transparent;color:var(--muted);font-size:13px;padding:6px 8px;border-radius:6px;" style-focus="background:var(--accent-soft);color:var(--ink)">
                 </td>
                 <td style="padding:4px 2px;border-bottom:1px solid var(--line);">
-                  <input inputmode="decimal" aria-label="Income record for {{ row.date }}" title="Positive amounts only; does not affect calculations" placeholder="0" defaultValue="{{ row.incomeDisplay }}" onBlur="{{ row.onIncome }}" style="width:92px;text-align:right;border:none;background:transparent;color:var(--pos);font-size:13px;padding:6px 8px;border-radius:6px;" style-focus="background:var(--accent-soft);color:var(--pos)">
+                  <input inputmode="decimal" aria-label="Income record for {{ row.date }}" title="Positive amounts only; subtracted from Consumption" placeholder="0" defaultValue="{{ row.incomeDisplay }}" onBlur="{{ row.onIncome }}" style="width:92px;text-align:right;border:none;background:transparent;color:var(--pos);font-size:13px;padding:6px 8px;border-radius:6px;" style-focus="background:var(--accent-soft);color:var(--pos)">
                 </td>
                 <td style="{{ row.changeStyle }}" >{{ row.changeStr }}</td>
                 <td style="border-bottom:1px solid var(--line);text-align:center;">
@@ -707,7 +707,7 @@ class Component extends DCLogic {
       const total=this.sumMoney(A.map(a=>e.balances[a.id]));
       const adjustment=typeof e.trendAdjustment==='number'&&isFinite(e.trendAdjustment)?this.money(e.trendAdjustment):0;
       const income=typeof e.income==='number'&&isFinite(e.income)?this.money(Math.max(0,e.income)):0;
-      const change = prev==null ? '' : this.money(total-prev-adjustment).toFixed(2); prev=total;
+      const change = prev==null ? '' : this.money(total-prev-adjustment-income).toFixed(2); prev=total;
       const row=[e.date, ...A.map(a=> typeof e.balances[a.id]==='number'&&isFinite(e.balances[a.id]) ? this.money(e.balances[a.id]).toFixed(2) : ''), total.toFixed(2), adjustment?adjustment.toFixed(2):'', income?income.toFixed(2):'', change];
       lines.push(row.join(','));
     });
@@ -862,7 +862,7 @@ class Component extends DCLogic {
     wt.forEach((e,i)=>{
       e.trendAdjustment=typeof e.trendAdjustment==='number'&&isFinite(e.trendAdjustment)?this.money(e.trendAdjustment):0;
       e.income=typeof e.income==='number'&&isFinite(e.income)?this.money(Math.max(0,e.income)):0;
-      e.change=i>0?this.money(e.total-wt[i-1].total-e.trendAdjustment):null;
+      e.change=i>0?this.money(e.total-wt[i-1].total-e.trendAdjustment-e.income):null;
       e.trendTotal=i>0?this.money(wt[i-1].trendTotal+e.change):e.total;
       e.changePct=(i>0&&wt[i-1].total)?(e.change/wt[i-1].total*100):null;
     });
