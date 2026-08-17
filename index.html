@@ -68,7 +68,7 @@
         </div>
       </div>
       <div style="max-width:340px;font-size:12.5px;line-height:1.5;color:var(--muted);text-align:right;">
-        Log each account's balance every Sunday — spending is calculated for you. Cells accept math, e.g. <span style="font-family:'Space Grotesk',monospace;color:var(--ink);">223.07+250</span>. Changes save locally and sync securely across your devices.
+        Log each account's balance every Sunday — spending is calculated for you. Use Excluded for one-time income (+) or expenses (−) that should not affect the trend. Cells accept math, e.g. <span style="font-family:'Space Grotesk',monospace;color:var(--ink);">223.07+250</span>.
       </div>
     </div>
 
@@ -292,6 +292,7 @@
                 </th>
               </sc-for>
               <th style="padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line);white-space:nowrap;">Total</th>
+              <th title="One-time amount excluded from trend calculations. Use + for income and − for expenses." style="padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line);white-space:nowrap;">Excluded</th>
               <th style="padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line);white-space:nowrap;">Change</th>
               <th style="text-align:left;padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line);">Note</th>
               <th style="border-bottom:1px solid var(--line);width:28px;"></th>
@@ -309,6 +310,9 @@
                   </td>
                 </sc-for>
                 <td style="padding:6px 10px;border-bottom:1px solid var(--line);text-align:right;font-weight:600;font-size:13px;white-space:nowrap;">{{ row.totalStr }}</td>
+                <td style="padding:4px 2px;border-bottom:1px solid var(--line);">
+                  <input inputmode="text" aria-label="Excluded one-time amount for {{ row.date }}" title="Positive for one-time income; negative for a one-time expense" placeholder="±0" defaultValue="{{ row.adjustmentDisplay }}" onBlur="{{ row.onAdjustment }}" style="width:92px;text-align:right;border:none;background:transparent;color:var(--muted);font-size:13px;padding:6px 8px;border-radius:6px;" style-focus="background:var(--accent-soft);color:var(--ink)">
+                </td>
                 <td style="{{ row.changeStyle }}" >{{ row.changeStr }}</td>
                 <td style="padding:4px 6px;border-bottom:1px solid var(--line);">
                   <input placeholder="Add note…" defaultValue="{{ row.note }}" onBlur="{{ row.onNote }}" style="width:100%;min-width:120px;border:none;background:transparent;color:var(--ink);font-size:13px;padding:6px 4px;" style-focus="color:var(--accent)">
@@ -364,7 +368,8 @@ class Component extends DCLogic {
     return entries.map(entry=>{
       const balances={...(entry.balances||{})};
       Object.keys(balances).forEach(id=>{ if(typeof balances[id]==='number'&&isFinite(balances[id])) balances[id]=this.money(balances[id]); });
-      return {...entry,balances};
+      const trendAdjustment=typeof entry.trendAdjustment==='number'&&isFinite(entry.trendAdjustment)?this.money(entry.trendAdjustment):0;
+      return {...entry,trendAdjustment,balances};
     });
   }
 
@@ -584,6 +589,11 @@ class Component extends DCLogic {
   }
   setDate(id, val){ if(!val) return; this.setState(s=>({entries: s.entries.map(e=> e.id===id ? {...e, date:val} : e)}), ()=>this.persist()); }
   setNote(id, val){ this.setState(s=>({entries: s.entries.map(e=> e.id===id ? {...e, note:val} : e)}), ()=>this.persist()); }
+  setTrendAdjustment(id, ev){
+    const val=this.evalExpr(ev.target.value);
+    if(val===undefined) return;
+    this.setState(s=>({entries:s.entries.map(e=>e.id===id?{...e,trendAdjustment:val==null?0:this.money(val)}:e)}),()=>this.persist());
+  }
   deleteEntry(id){ this.setState(s=>({entries: s.entries.filter(e=> e.id!==id)}), ()=>this.persist()); }
   renameAccount(id, name){ this.setState(s=>({accounts: s.accounts.map(a=> a.id===id ? {...a, name:(name||a.name)} : a)}), ()=>this.persist()); }
   removeAccount(id){
@@ -603,7 +613,7 @@ class Component extends DCLogic {
     // snap forward to the next Sunday (0 = Sunday) so entries always land on Sunday
     const add=(7 - d.getDay()) % 7; d.setDate(d.getDate()+add);
     const date=this.iso(d);
-    this.setState(s=>({entries:[...s.entries, {id:this.uid(), date, note:'', balances:{}}]}), ()=>this.persist());
+    this.setState(s=>({entries:[...s.entries, {id:this.uid(), date, note:'', trendAdjustment:0, balances:{}}]}), ()=>this.persist());
   }
   setGoal(ev){ const v=this.evalExpr(ev.target.value); if(v==null) return; this.setState({goal:this.money(v)}, ()=>this.persist()); }
   setMonthlyFixedCosts(ev){
@@ -680,12 +690,13 @@ class Component extends DCLogic {
   onExport(){
     const A=this.state.accounts;
     const es=[...this.state.entries].sort((a,b)=> a.date<b.date?-1:1);
-    const head=['Date',...A.map(a=>a.name),'Total','Change','Note'];
+    const head=['Date',...A.map(a=>a.name),'Total','Excluded','Change','Note'];
     const lines=[head.join(',')]; let prev=null;
     es.forEach(e=>{
       const total=this.sumMoney(A.map(a=>e.balances[a.id]));
-      const change = prev==null ? '' : this.money(total-prev).toFixed(2); prev=total;
-      const row=[e.date, ...A.map(a=> typeof e.balances[a.id]==='number'&&isFinite(e.balances[a.id]) ? this.money(e.balances[a.id]).toFixed(2) : ''), total.toFixed(2), change, ('"'+(e.note||'').replace(/"/g,'""')+'"')];
+      const adjustment=typeof e.trendAdjustment==='number'&&isFinite(e.trendAdjustment)?this.money(e.trendAdjustment):0;
+      const change = prev==null ? '' : this.money(total-prev-adjustment).toFixed(2); prev=total;
+      const row=[e.date, ...A.map(a=> typeof e.balances[a.id]==='number'&&isFinite(e.balances[a.id]) ? this.money(e.balances[a.id]).toFixed(2) : ''), total.toFixed(2), adjustment?adjustment.toFixed(2):'', change, ('"'+(e.note||'').replace(/"/g,'""')+'"')];
       lines.push(row.join(','));
     });
     const blob=new Blob([lines.join('\n')],{type:'text/csv'});
@@ -742,8 +753,10 @@ class Component extends DCLogic {
       const keys=headers.map(v=>this.headerKey(v));
       const dateCol=implicitDateCol>=0 ? implicitDateCol : keys.findIndex(k=>dateNames.includes(k));
       const noteCol=keys.findIndex(k=>['note','notes','备注'].includes(k));
+      const adjustmentNames=['excluded','exclude','trend adjustment','trend adjustment amount','adjustment','excluded amount','不计入趋势','趋势调整额','排除金额'];
+      const adjustmentCol=keys.findIndex(k=>adjustmentNames.includes(k));
       const ignored=['','total','sum','change','net worth','networth','spending'];
-      const accountCols=headers.map((name,i)=>({name,i,key:keys[i]})).filter(c=>c.i!==dateCol && c.i!==noteCol && !ignored.includes(c.key));
+      const accountCols=headers.map((name,i)=>({name,i,key:keys[i]})).filter(c=>c.i!==dateCol && c.i!==noteCol && c.i!==adjustmentCol && !ignored.includes(c.key));
       if(!accountCols.length) throw new Error('No account columns were found. Put each account in its own column after Date.');
 
       const parsed=[];
@@ -759,7 +772,9 @@ class Component extends DCLogic {
           if(value!=null) values[col.key]=value;
         }
         const note=noteCol>=0?String(row[noteCol]||'').trim():'';
-        if(Object.keys(values).length || note) parsed.push({date,note,values});
+        const trendAdjustment=adjustmentCol>=0?this.importNumber(row[adjustmentCol]):0;
+        if(trendAdjustment===undefined) throw new Error('Row '+(r+1)+', '+headers[adjustmentCol]+' is not a valid number.');
+        if(Object.keys(values).length || note || trendAdjustment) parsed.push({date,note,trendAdjustment:trendAdjustment||0,values});
       }
       if(!parsed.length) throw new Error('No rows with account balances were found.');
       if(!window.confirm('Import '+parsed.length+' row'+(parsed.length===1?'':'s')+' from '+file.name+'? Entries with the same date will be updated.')) return;
@@ -777,9 +792,10 @@ class Component extends DCLogic {
         const byDate=new Map(entries.map(e=>[e.date,e]));
         parsed.forEach(row=>{
           let entry=byDate.get(row.date);
-          if(!entry){ entry={id:this.uid(),date:row.date,note:'',balances:{}}; entries.push(entry); byDate.set(row.date,entry); }
+          if(!entry){ entry={id:this.uid(),date:row.date,note:'',trendAdjustment:0,balances:{}}; entries.push(entry); byDate.set(row.date,entry); }
           importedAccounts.forEach((account,key)=>{ if(row.values[key]!=null) entry.balances[account.id]=row.values[key]; });
           if(row.note) entry.note=row.note;
+          if(adjustmentCol>=0) entry.trendAdjustment=row.trendAdjustment;
         });
         return {accounts,entries,isDemo:false,selectedAccountIds:accounts.map(a=>a.id),hoveredPoint:null};
       },()=>{ this.persist(); window.alert('Imported '+parsed.length+' row'+(parsed.length===1?'':'s')+' successfully.'); });
@@ -826,7 +842,12 @@ class Component extends DCLogic {
     const es=[...this.state.entries].sort((a,b)=> a.date<b.date?-1: a.date>b.date?1:0);
     const totalOf=(e)=> this.sumMoney(accounts.map(a=>e.balances[a.id]));
     const wt=es.map(e=>({...e, total:totalOf(e)}));
-    wt.forEach((e,i)=>{ e.change = i>0 ? this.money(e.total-wt[i-1].total) : null; e.changePct = (i>0 && wt[i-1].total) ? (e.change/wt[i-1].total*100) : null; });
+    wt.forEach((e,i)=>{
+      e.trendAdjustment=typeof e.trendAdjustment==='number'&&isFinite(e.trendAdjustment)?this.money(e.trendAdjustment):0;
+      e.change=i>0?this.money(e.total-wt[i-1].total-e.trendAdjustment):null;
+      e.trendTotal=i>0?this.money(wt[i-1].trendTotal+e.change):e.total;
+      e.changePct=(i>0&&wt[i-1].total)?(e.change/wt[i-1].total*100):null;
+    });
 
     const n=wt.length;
     const current = n ? wt[n-1].total : 0;
@@ -834,7 +855,7 @@ class Component extends DCLogic {
     const lastPct = n>1 ? wt[n-1].changePct : null;
 
     let perDay=null;
-    if(n>1){ const days=dayNumber(wt[n-1].date)-dayNumber(wt[0].date); perDay = days>0 ? (wt[n-1].total-wt[0].total)/days : null; }
+    if(n>1){ const days=dayNumber(wt[n-1].date)-dayNumber(wt[0].date); perDay = days>0 ? (wt[n-1].trendTotal-wt[0].trendTotal)/days : null; }
     const perMonth = perDay!=null ? perDay*30 : null;
 
     // delta chip
@@ -1018,12 +1039,12 @@ class Component extends DCLogic {
         const leftDay=dayNumber(wt[j-1].date), rightDay=dayNumber(wt[j].date);
         if(startDay<leftDay||startDay>rightDay||rightDay<=leftDay) continue;
         const ratio=(startDay-leftDay)/(rightDay-leftDay);
-        startTotal=wt[j-1].total+(wt[j].total-wt[j-1].total)*ratio;
+        startTotal=wt[j-1].trendTotal+(wt[j].trendTotal-wt[j-1].trendTotal)*ratio;
         break;
       }
       if(startTotal==null) continue;
       const startIso=new Date(startDay*864e5).toISOString().slice(0,10);
-      changes.push({val:this.money(wt[i].total-startTotal),date:short(wt[i].date),range:short(startIso)+'–'+short(wt[i].date)});
+      changes.push({val:this.money(wt[i].trendTotal-startTotal),date:short(wt[i].date),range:short(startIso)+'–'+short(wt[i].date)});
     }
     const m=changes.length;
     const hoveredBarIndex=Number.isInteger(this.state.hoveredBarIndex)&&this.state.hoveredBarIndex>=0&&this.state.hoveredBarIndex<m?this.state.hoveredBarIndex:null;
@@ -1069,15 +1090,17 @@ class Component extends DCLogic {
 
     // ---- table ----
     const rows=[...wt].reverse().map(e=>({
-      key: e.id+'|'+e.date+'|'+e.total+'|'+(e.note||''),
+      key: e.id+'|'+e.date+'|'+e.total+'|'+e.trendAdjustment+'|'+(e.note||''),
       date:e.date, note:e.note||'',
       totalStr:fmt(e.total, showCents),
+      adjustmentDisplay:e.trendAdjustment?(showCents?e.trendAdjustment.toFixed(2):''+Math.round(e.trendAdjustment)):'',
       changeStr: e.change==null ? '—' : signed(e.change, showCents),
       changeStyle:{padding:'6px 10px',borderBottom:'1px solid var(--line)',textAlign:'right',fontWeight:600,fontSize:'13px',whiteSpace:'nowrap',color: e.change==null?'var(--muted)': e.change>=0?'var(--pos)':'var(--neg)'},
       cells: accounts.map(a=>{ const v=e.balances[a.id]; const has=(typeof v==='number'&&isFinite(v));
         const disp = has ? (showCents ? this.money(v).toFixed(2) : (''+Math.round(v))) : '';
         return {key:a.id+'_'+e.id+'_'+disp, display:disp, onBlur:(ev)=>this.onCellBlur(e.id,a.id,ev)}; }),
       onDate:(ev)=>this.setDate(e.id, ev.target.value),
+      onAdjustment:(ev)=>this.setTrendAdjustment(e.id,ev),
       onNote:(ev)=>this.setNote(e.id, ev.target.value),
       onDelete:()=>this.deleteEntry(e.id)
     }));
