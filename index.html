@@ -96,11 +96,11 @@
         <div style="font-family:'Space Grotesk',sans-serif;font-size:26px;font-weight:600;margin-top:8px;font-variant-numeric:tabular-nums;">{{ netWorthStr }}</div>
       </div>
       <div style="background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px 18px;">
-        <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Last period change</div>
+        <div title="The plain difference between this period's total and the last, with Excluded and Income left in." style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Last period change</div>
         <div style="{{ lastChangeStyle }}" >{{ lastChangeStr }}</div>
       </div>
       <div style="background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px 18px;">
-        <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Avg / month</div>
+        <div title="Averaged from the Consumption column, so Excluded and Income are both removed." style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Average consumption per month</div>
         <div style="{{ perMonthStyle }}" >{{ perMonthStr }}</div>
       </div>
       <div style="background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px 18px;">
@@ -886,13 +886,15 @@ class Component extends DCLogic {
       e.change=i>0?this.money(e.total-wt[i-1].total-e.trendAdjustment-e.income):null;
       e.trendTotal=i>0?this.money(wt[i-1].trendTotal+e.change):e.total;
       e.netTrendTotal=i>0?this.money(wt[i-1].netTrendTotal+e.change+e.income):e.total;
-      e.changePct=(i>0&&wt[i-1].total)?(e.change/wt[i-1].total*100):null;
+      // rawChange is the plain period-over-period move, with excluded and income left in.
+      e.rawChange=i>0?this.money(e.total-wt[i-1].total):null;
+      e.rawChangePct=(i>0&&wt[i-1].total)?(e.rawChange/wt[i-1].total*100):null;
     });
 
     const n=wt.length;
     const current = n ? wt[n-1].total : 0;
-    const lastChange = n>1 ? wt[n-1].change : null;
-    const lastPct = n>1 ? wt[n-1].changePct : null;
+    const lastChange = n>1 ? wt[n-1].rawChange : null;
+    const lastPct = n>1 ? wt[n-1].rawChangePct : null;
 
     const ratePerDay=(key)=>{ if(n<=1) return null; const days=dayNumber(wt[n-1].date)-dayNumber(wt[0].date); return days>0 ? (wt[n-1][key]-wt[0][key])/days : null; };
     const perDay = ratePerDay('trendTotal');                                  // spending-only, drives the pace chart and Avg / month
