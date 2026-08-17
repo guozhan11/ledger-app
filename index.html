@@ -68,7 +68,7 @@
         </div>
       </div>
       <div style="max-width:340px;font-size:12.5px;line-height:1.5;color:var(--muted);text-align:right;">
-        Log each account's balance every Sunday — spending is calculated for you. Use Excluded for one-time income (+) or expenses (−) that should not affect the trend. Cells accept math, e.g. <span style="font-family:'Space Grotesk',monospace;color:var(--ink);">223.07+250</span>.
+        Log each account's balance every Sunday — spending is calculated for you. Use Excluded for positive or negative one-time adjustments. Income is a positive-only note for your own records and does not affect any calculation. Cells accept math, e.g. <span style="font-family:'Space Grotesk',monospace;color:var(--ink);">223.07+250</span>.
       </div>
     </div>
 
@@ -278,7 +278,7 @@
       </div>
 
       <div style="overflow-x:auto;">
-        <table style="width:100%;border-collapse:collapse;min-width:640px;font-variant-numeric:tabular-nums;">
+        <table style="width:100%;border-collapse:collapse;min-width:740px;font-variant-numeric:tabular-nums;">
           <thead>
             <tr style="text-align:right;">
               <th style="text-align:left;padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line);white-space:nowrap;">Date</th>
@@ -292,7 +292,8 @@
                 </th>
               </sc-for>
               <th style="padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line);white-space:nowrap;">Total</th>
-              <th title="One-time amount excluded from trend calculations. Use + for income and − for expenses." style="padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line);white-space:nowrap;">Income</th>
+              <th title="One-time adjustment excluded from spending. May be positive or negative." style="padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line);white-space:nowrap;">Excluded</th>
+              <th title="Positive-only record that does not affect any calculation." style="padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line);white-space:nowrap;">Income</th>
               <th style="padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line);white-space:nowrap;">Spending</th>
               <th style="text-align:left;padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line);">Note</th>
               <th style="border-bottom:1px solid var(--line);width:28px;"></th>
@@ -311,7 +312,10 @@
                 </sc-for>
                 <td style="padding:6px 10px;border-bottom:1px solid var(--line);text-align:right;font-weight:600;font-size:13px;white-space:nowrap;">{{ row.totalStr }}</td>
                 <td style="padding:4px 2px;border-bottom:1px solid var(--line);">
-                  <input inputmode="text" aria-label="Excluded one-time amount for {{ row.date }}" title="Positive for one-time income; negative for a one-time expense" placeholder="±0" defaultValue="{{ row.adjustmentDisplay }}" onBlur="{{ row.onAdjustment }}" style="width:92px;text-align:right;border:none;background:transparent;color:var(--muted);font-size:13px;padding:6px 8px;border-radius:6px;" style-focus="background:var(--accent-soft);color:var(--ink)">
+                  <input inputmode="text" aria-label="Excluded adjustment for {{ row.date }}" title="May be positive or negative" placeholder="±0" defaultValue="{{ row.adjustmentDisplay }}" onBlur="{{ row.onAdjustment }}" style="width:92px;text-align:right;border:none;background:transparent;color:var(--muted);font-size:13px;padding:6px 8px;border-radius:6px;" style-focus="background:var(--accent-soft);color:var(--ink)">
+                </td>
+                <td style="padding:4px 2px;border-bottom:1px solid var(--line);">
+                  <input inputmode="decimal" aria-label="Income record for {{ row.date }}" title="Positive amounts only; does not affect calculations" placeholder="0" defaultValue="{{ row.incomeDisplay }}" onBlur="{{ row.onIncome }}" style="width:92px;text-align:right;border:none;background:transparent;color:var(--pos);font-size:13px;padding:6px 8px;border-radius:6px;" style-focus="background:var(--accent-soft);color:var(--pos)">
                 </td>
                 <td style="{{ row.changeStyle }}" >{{ row.changeStr }}</td>
                 <td style="padding:4px 6px;border-bottom:1px solid var(--line);">
@@ -369,7 +373,8 @@ class Component extends DCLogic {
       const balances={...(entry.balances||{})};
       Object.keys(balances).forEach(id=>{ if(typeof balances[id]==='number'&&isFinite(balances[id])) balances[id]=this.money(balances[id]); });
       const trendAdjustment=typeof entry.trendAdjustment==='number'&&isFinite(entry.trendAdjustment)?this.money(entry.trendAdjustment):0;
-      return {...entry,trendAdjustment,balances};
+      const income=typeof entry.income==='number'&&isFinite(entry.income)?this.money(Math.max(0,entry.income)):0;
+      return {...entry,trendAdjustment,income,balances};
     });
   }
 
@@ -423,7 +428,7 @@ class Component extends DCLogic {
     const savings={id:this.uid(),name:'Savings'};
     const investments={id:this.uid(),name:'Investments'};
     const card={id:this.uid(),name:'Credit Card'};
-    const row=(date,a,b,c,d,note)=>({id:this.uid(),date,note:note||'',balances:{[checking.id]:a,[savings.id]:b,[investments.id]:c,[card.id]:d}});
+    const row=(date,a,b,c,d,note)=>({id:this.uid(),date,note:note||'',trendAdjustment:0,income:0,balances:{[checking.id]:a,[savings.id]:b,[investments.id]:c,[card.id]:d}});
     return {
       accounts:[checking,savings,investments,card],
       entries:[
@@ -594,6 +599,16 @@ class Component extends DCLogic {
     if(val===undefined) return;
     this.setState(s=>({entries:s.entries.map(e=>e.id===id?{...e,trendAdjustment:val==null?0:this.money(val)}:e)}),()=>this.persist());
   }
+  setIncome(id, ev){
+    const val=this.evalExpr(ev.target.value);
+    if(val===undefined || (val!=null && val<0)){
+      const entry=this.state.entries.find(e=>e.id===id);
+      const current=entry&&typeof entry.income==='number'&&isFinite(entry.income)&&entry.income>0?this.money(entry.income):0;
+      ev.target.value=current?current.toFixed(2):'';
+      return;
+    }
+    this.setState(s=>({entries:s.entries.map(e=>e.id===id?{...e,income:val==null?0:this.money(val)}:e)}),()=>this.persist());
+  }
   deleteEntry(id){ this.setState(s=>({entries: s.entries.filter(e=> e.id!==id)}), ()=>this.persist()); }
   renameAccount(id, name){ this.setState(s=>({accounts: s.accounts.map(a=> a.id===id ? {...a, name:(name||a.name)} : a)}), ()=>this.persist()); }
   removeAccount(id){
@@ -613,7 +628,7 @@ class Component extends DCLogic {
     // snap forward to the next Sunday (0 = Sunday) so entries always land on Sunday
     const add=(7 - d.getDay()) % 7; d.setDate(d.getDate()+add);
     const date=this.iso(d);
-    this.setState(s=>({entries:[...s.entries, {id:this.uid(), date, note:'', trendAdjustment:0, balances:{}}]}), ()=>this.persist());
+    this.setState(s=>({entries:[...s.entries, {id:this.uid(), date, note:'', trendAdjustment:0, income:0, balances:{}}]}), ()=>this.persist());
   }
   setGoal(ev){ const v=this.evalExpr(ev.target.value); if(v==null) return; this.setState({goal:this.money(v)}, ()=>this.persist()); }
   setMonthlyFixedCosts(ev){
@@ -690,13 +705,14 @@ class Component extends DCLogic {
   onExport(){
     const A=this.state.accounts;
     const es=[...this.state.entries].sort((a,b)=> a.date<b.date?-1:1);
-    const head=['Date',...A.map(a=>a.name),'Total','Excluded','Change','Note'];
+    const head=['Date',...A.map(a=>a.name),'Total','Excluded','Income','Spending','Note'];
     const lines=[head.join(',')]; let prev=null;
     es.forEach(e=>{
       const total=this.sumMoney(A.map(a=>e.balances[a.id]));
       const adjustment=typeof e.trendAdjustment==='number'&&isFinite(e.trendAdjustment)?this.money(e.trendAdjustment):0;
+      const income=typeof e.income==='number'&&isFinite(e.income)?this.money(Math.max(0,e.income)):0;
       const change = prev==null ? '' : this.money(total-prev-adjustment).toFixed(2); prev=total;
-      const row=[e.date, ...A.map(a=> typeof e.balances[a.id]==='number'&&isFinite(e.balances[a.id]) ? this.money(e.balances[a.id]).toFixed(2) : ''), total.toFixed(2), adjustment?adjustment.toFixed(2):'', change, ('"'+(e.note||'').replace(/"/g,'""')+'"')];
+      const row=[e.date, ...A.map(a=> typeof e.balances[a.id]==='number'&&isFinite(e.balances[a.id]) ? this.money(e.balances[a.id]).toFixed(2) : ''), total.toFixed(2), adjustment?adjustment.toFixed(2):'', income?income.toFixed(2):'', change, ('"'+(e.note||'').replace(/"/g,'""')+'"')];
       lines.push(row.join(','));
     });
     const blob=new Blob([lines.join('\n')],{type:'text/csv'});
@@ -755,8 +771,10 @@ class Component extends DCLogic {
       const noteCol=keys.findIndex(k=>['note','notes','备注'].includes(k));
       const adjustmentNames=['excluded','exclude','trend adjustment','trend adjustment amount','adjustment','excluded amount','不计入趋势','趋势调整额','排除金额'];
       const adjustmentCol=keys.findIndex(k=>adjustmentNames.includes(k));
+      const incomeNames=['income','income record','收入'];
+      const incomeCol=keys.findIndex(k=>incomeNames.includes(k));
       const ignored=['','total','sum','change','net worth','networth','spending'];
-      const accountCols=headers.map((name,i)=>({name,i,key:keys[i]})).filter(c=>c.i!==dateCol && c.i!==noteCol && c.i!==adjustmentCol && !ignored.includes(c.key));
+      const accountCols=headers.map((name,i)=>({name,i,key:keys[i]})).filter(c=>c.i!==dateCol && c.i!==noteCol && c.i!==adjustmentCol && c.i!==incomeCol && !ignored.includes(c.key));
       if(!accountCols.length) throw new Error('No account columns were found. Put each account in its own column after Date.');
 
       const parsed=[];
@@ -774,7 +792,9 @@ class Component extends DCLogic {
         const note=noteCol>=0?String(row[noteCol]||'').trim():'';
         const trendAdjustment=adjustmentCol>=0?this.importNumber(row[adjustmentCol]):0;
         if(trendAdjustment===undefined) throw new Error('Row '+(r+1)+', '+headers[adjustmentCol]+' is not a valid number.');
-        if(Object.keys(values).length || note || trendAdjustment) parsed.push({date,note,trendAdjustment:trendAdjustment||0,values});
+        const income=incomeCol>=0?this.importNumber(row[incomeCol]):0;
+        if(income===undefined || (income!=null && income<0)) throw new Error('Row '+(r+1)+', '+headers[incomeCol]+' must be a positive number.');
+        if(Object.keys(values).length || note || trendAdjustment || income) parsed.push({date,note,trendAdjustment:trendAdjustment||0,income:income||0,values});
       }
       if(!parsed.length) throw new Error('No rows with account balances were found.');
       if(!window.confirm('Import '+parsed.length+' row'+(parsed.length===1?'':'s')+' from '+file.name+'? Entries with the same date will be updated.')) return;
@@ -792,10 +812,11 @@ class Component extends DCLogic {
         const byDate=new Map(entries.map(e=>[e.date,e]));
         parsed.forEach(row=>{
           let entry=byDate.get(row.date);
-          if(!entry){ entry={id:this.uid(),date:row.date,note:'',trendAdjustment:0,balances:{}}; entries.push(entry); byDate.set(row.date,entry); }
+          if(!entry){ entry={id:this.uid(),date:row.date,note:'',trendAdjustment:0,income:0,balances:{}}; entries.push(entry); byDate.set(row.date,entry); }
           importedAccounts.forEach((account,key)=>{ if(row.values[key]!=null) entry.balances[account.id]=row.values[key]; });
           if(row.note) entry.note=row.note;
           if(adjustmentCol>=0) entry.trendAdjustment=row.trendAdjustment;
+          if(incomeCol>=0) entry.income=row.income;
         });
         return {accounts,entries,isDemo:false,selectedAccountIds:accounts.map(a=>a.id),hoveredPoint:null};
       },()=>{ this.persist(); window.alert('Imported '+parsed.length+' row'+(parsed.length===1?'':'s')+' successfully.'); });
@@ -844,6 +865,7 @@ class Component extends DCLogic {
     const wt=es.map(e=>({...e, total:totalOf(e)}));
     wt.forEach((e,i)=>{
       e.trendAdjustment=typeof e.trendAdjustment==='number'&&isFinite(e.trendAdjustment)?this.money(e.trendAdjustment):0;
+      e.income=typeof e.income==='number'&&isFinite(e.income)?this.money(Math.max(0,e.income)):0;
       e.change=i>0?this.money(e.total-wt[i-1].total-e.trendAdjustment):null;
       e.trendTotal=i>0?this.money(wt[i-1].trendTotal+e.change):e.total;
       e.changePct=(i>0&&wt[i-1].total)?(e.change/wt[i-1].total*100):null;
@@ -1090,10 +1112,11 @@ class Component extends DCLogic {
 
     // ---- table ----
     const rows=[...wt].reverse().map(e=>({
-      key: e.id+'|'+e.date+'|'+e.total+'|'+e.trendAdjustment+'|'+(e.note||''),
+      key: e.id+'|'+e.date+'|'+e.total+'|'+e.trendAdjustment+'|'+e.income+'|'+(e.note||''),
       date:e.date, note:e.note||'',
       totalStr:fmt(e.total, showCents),
       adjustmentDisplay:e.trendAdjustment?(showCents?e.trendAdjustment.toFixed(2):''+Math.round(e.trendAdjustment)):'',
+      incomeDisplay:e.income?(showCents?e.income.toFixed(2):''+Math.round(e.income)):'',
       changeStr: e.change==null ? '—' : signed(e.change, showCents),
       changeStyle:{padding:'6px 10px',borderBottom:'1px solid var(--line)',textAlign:'right',fontWeight:600,fontSize:'13px',whiteSpace:'nowrap',color: e.change==null?'var(--muted)': e.change>=0?'var(--pos)':'var(--neg)'},
       cells: accounts.map(a=>{ const v=e.balances[a.id]; const has=(typeof v==='number'&&isFinite(v));
@@ -1101,6 +1124,7 @@ class Component extends DCLogic {
         return {key:a.id+'_'+e.id+'_'+disp, display:disp, onBlur:(ev)=>this.onCellBlur(e.id,a.id,ev)}; }),
       onDate:(ev)=>this.setDate(e.id, ev.target.value),
       onAdjustment:(ev)=>this.setTrendAdjustment(e.id,ev),
+      onIncome:(ev)=>this.setIncome(e.id,ev),
       onNote:(ev)=>this.setNote(e.id, ev.target.value),
       onDelete:()=>this.deleteEntry(e.id)
     }));
